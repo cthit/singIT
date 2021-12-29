@@ -1,0 +1,15 @@
+{
+  "name": "SingIT",
+  "short_name": "SingIT",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09babe",
+  "description": "Karaokelåtar på IT",
+  "icons": [
+    {
+      "src": "/static/icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
