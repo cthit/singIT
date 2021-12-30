@@ -1,5 +1,6 @@
 mod app;
 mod css;
+mod fuzzy;
 mod song;
 
 use seed::prelude::wasm_bindgen;

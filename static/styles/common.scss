@@ -15,7 +15,7 @@ body {
 	background-color: #0c2738;
 	color: #ffffff;
 	height: 100%;
-	font-family: Open Sans,serif;
+	font-family: Ubuntu,serif;
 }
 
 .nobr {
@@ -39,6 +39,9 @@ body {
 .song_search_bar {
 	position: relative;
 	padding: 1em 1em .5em;
+	max-width: 35em;
+	width: 80%;
+	margin: auto;
 }
 
 .song_search_field {
@@ -63,6 +66,7 @@ body {
 	background-color: #427493;
 	transition: 0.4s;
 	color: #ffffff;
+	font-weight: 900;
 }
 
 .song_sort_button:hover {
@@ -76,7 +80,7 @@ body {
 }
 
 .song_sort_button_selected {
-	color: #ffff00;
+	color: #00ff00;
 	transition: 0.1s;
 }
 
@@ -99,18 +103,23 @@ body {
 	flex-direction: row;
 	border-radius: 1em;
 	background: black;
+	max-width: 40em;
+	margin: auto;
 	margin-bottom: 1em;
 	animation: song_item_enter 1s 1;
+	box-shadow: #09babe 1px 1px;
 }
 
 @keyframes song_item_enter {
 	from {
-		margin-left: -16em;
-		margin-right: 16em;
+		opacity: 0;
+		/*margin-left: -16em;
+		margin-right: 16em;*/
 	}
 	to   {
-		margin-left: 0;
-		margin-right: 0;
+		opacity: 1;
+		/*margin-left: 0;
+		margin-right: 0;*/
 	}
 }
 
@@ -129,8 +138,9 @@ body {
 }
 
 .song_item_cover {
-	height: 5em;
 	width: 5em;
+	height: auto;
+	object-fit: cover;
 	border-top-left-radius: 1em;
 	border-bottom-left-radius: 1em;
 }
@@ -153,11 +163,22 @@ body {
 	flex-grow: 0;
 	flex-shrink: 1;
 	padding-top: 1.5em;
-	padding-right: 1.5em;
+}
+
+.song_gizmos div {
+	margin-right: 1em;
 }
 
 .duet_icon {
 	background-image: url("/images/duet.svg");
+	background-size: contain;
+	background-repeat: no-repeat;
+	width: 2em;
+	height: 2em;
+}
+
+.video_icon {
+	background-image: url("/images/video.svg");
 	background-size: contain;
 	background-repeat: no-repeat;
 	width: 2em;
