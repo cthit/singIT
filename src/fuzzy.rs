@@ -1,28 +1,4 @@
-use std::cmp::{Ord, Ordering, PartialOrd};
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct FuzzyScore {
-    pub score: i32,
-    pub matches: Vec<FuzzyCharMatch>,
-}
-
-#[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
-pub struct FuzzyCharMatch {
-    pub base_str_index: usize,
-    pub search_str_index: usize,
-}
-
-impl PartialOrd for FuzzyScore {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for FuzzyScore {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.score.cmp(&other.score)
-    }
-}
+pub type FuzzyScore = i32;
 
 /// Compare a base string to a user-input search
 ///
@@ -39,21 +15,13 @@ where
     //let mut score = -(search.len() as i32);
     let mut score = 0;
 
-    // Vector of which char index in s maps to which char index in self.name
-    let mut matches = vec![];
-
-    for (i, sc) in search.into_iter().enumerate() {
+    for (_i, sc) in search.into_iter().enumerate() {
         let sc = sc.to_ascii_lowercase();
         let mut add = 3;
         let mut base_tmp = base.clone();
-        while let Some((j, bc)) = base_tmp.next() {
+        while let Some((_j, bc)) = base_tmp.next() {
             let bc = bc.to_ascii_lowercase();
             if bc == sc {
-                matches.push(FuzzyCharMatch {
-                    search_str_index: i,
-                    base_str_index: j,
-                });
-
                 score += add;
                 base = base_tmp;
                 break;
@@ -63,5 +31,9 @@ where
         }
     }
 
-    FuzzyScore { score, matches }
+    score
+}
+
+pub fn max_score(query: &str) -> FuzzyScore {
+    compare(query.chars(), query.chars())
 }

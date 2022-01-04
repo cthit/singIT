@@ -33,15 +33,14 @@ body {
 	bottom: 0;
 	left: 1em;
 	right: 1em;
-	padding-right: 1em; /* Leave space for scroll bar */
 }
 
 .song_search_bar {
 	position: relative;
-	padding: 1em 1em .5em;
-	max-width: 35em;
+	max-width: 38em;
 	width: 80%;
 	margin: auto;
+	margin-top: 1em;
 }
 
 .song_search_field {
@@ -169,20 +168,27 @@ body {
 	margin-right: 1em;
 }
 
-.duet_icon {
-	background-image: url("/images/duet.svg");
+.gizmo {
 	background-size: contain;
 	background-repeat: no-repeat;
 	width: 2em;
 	height: 2em;
 }
 
+.duet_icon {
+	background-image: url("/images/duet.svg");
+}
+
 .video_icon {
 	background-image: url("/images/video.svg");
-	background-size: contain;
-	background-repeat: no-repeat;
-	width: 2em;
-	height: 2em;
+}
+
+.flag_icon {
+	background-image: url("/images/flag.svg");
+}
+
+.note_icon {
+	background-image: url("/images/note.svg");
 }
 
 .hidden {

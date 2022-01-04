@@ -1,4 +1,5 @@
 use crate::css::C;
+use crate::query::ParsedQuery;
 use crate::song::Song;
 use anyhow::anyhow;
 use rand::seq::SliceRandom;
@@ -8,11 +9,14 @@ use seed::browser::util::document;
 use seed::prelude::*;
 use seed::{attrs, button, div, empty, error, img, input, p, span, C, IF};
 use std::cmp::Reverse;
+use web_sys::Element;
 
 pub struct Model {
     songs: Vec<Song>,
+    query: String,
     filtered_songs: Vec<usize>,
-    show_elements: usize,
+    hidden_songs: usize,
+    shown_songs: usize,
     filter_video: bool,
     filter_duets: bool,
 }
@@ -20,7 +24,6 @@ pub struct Model {
 const SCROLL_THRESHOLD: usize = 50;
 const INITIAL_ELEM_COUNT: usize = 100;
 
-//#[derive(Clone, Debug)]
 pub enum Msg {
     Search(String),
     ToggleVideo,
@@ -37,8 +40,10 @@ pub fn init(_url: Url, _orders: &mut impl Orders<Msg>) -> Model {
 
     Model {
         songs,
+        query: String::new(),
         filtered_songs,
-        show_elements: INITIAL_ELEM_COUNT,
+        hidden_songs: 0,
+        shown_songs: INITIAL_ELEM_COUNT,
         filter_video: false,
         filter_duets: false,
     }
@@ -46,18 +51,57 @@ pub fn init(_url: Url, _orders: &mut impl Orders<Msg>) -> Model {
 
 pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
-        Msg::Search(query) if query.is_empty() => update(Msg::Shuffle, model, orders),
         Msg::Search(query) => {
-            model.filtered_songs.sort_by_cached_key(|&i| {
-                let song = &model.songs[i];
-                let top_score = Reverse(song.fuzzy_compare(&query));
+            model.hidden_songs = 0;
+            model.shown_songs = INITIAL_ELEM_COUNT;
+            scroll_to_top();
 
-                (top_score, &song.title, &song.artist, &song.song_hash)
-            });
+            model.query = query;
+
+            if model.query.is_empty() {
+                model.filter_duets = false;
+                model.filter_video = false;
+                update(Msg::Shuffle, model, orders)
+            } else {
+                let query = ParsedQuery::parse(&model.query);
+                model.filtered_songs.sort_by_cached_key(|&i| {
+                    let song = &model.songs[i];
+                    let score = song.fuzzy_compare(&query);
+                    if score < Default::default() {
+                        model.hidden_songs += 1;
+                    }
+
+                    let top_score = Reverse(score);
+
+                    (top_score, &song.title, &song.artist, &song.song_hash)
+                });
+                model.filter_duets = query.duet == Some(true);
+                model.filter_video = query.video == Some(true);
+            }
         }
-        Msg::ToggleVideo => model.filter_video = !model.filter_video,
-        Msg::ToggleDuets => model.filter_duets = !model.filter_duets,
-        Msg::Shuffle => model.filtered_songs.shuffle(&mut thread_rng()),
+        Msg::ToggleVideo => {
+            let mut query = ParsedQuery::parse(&model.query);
+            query.video = match query.video {
+                Some(true) => None,
+                None | Some(false) => Some(true),
+            };
+            update(Msg::Search(query.to_string()), model, orders);
+        }
+        Msg::ToggleDuets => {
+            let mut query = ParsedQuery::parse(&model.query);
+            query.duet = match query.duet {
+                Some(true) => None,
+                None | Some(false) => Some(true),
+            };
+            update(Msg::Search(query.to_string()), model, orders);
+        }
+        Msg::Shuffle => {
+            model.hidden_songs = 0;
+            model.shown_songs = INITIAL_ELEM_COUNT;
+            scroll_to_top();
+            model.query.clear();
+            model.filtered_songs.shuffle(&mut thread_rng());
+        }
         Msg::Scroll => {
             let (scroll, max_scroll) = match get_scroll() {
                 Ok(v) => v,
@@ -73,8 +117,8 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             const ELEMENT_HEIGHT: i32 = 48;
 
             if scroll_left < ELEMENT_HEIGHT * SCROLL_THRESHOLD as i32 {
-                model.show_elements += 1;
-                orders.perform_cmd(timeout(32, || Msg::Scroll));
+                model.shown_songs += 1;
+                orders.perform_cmd(timeout(32 /* ms */, || Msg::Scroll));
             }
         }
     }
@@ -100,7 +144,7 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 C![C.song_gizmos],
                 match (&song.duet_singer_1, &song.duet_singer_2) {
                     (Some(p1), Some(p2)) => div![
-                        C![C.duet_icon, C.tooltip],
+                        C![C.gizmo, C.duet_icon, C.tooltip],
                         span![
                             C![C.tooltiptext],
                             "Duet",
@@ -113,12 +157,26 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                     _ => empty![],
                 },
                 IF![song.video.is_some() => div![
-                    C![C.video_icon, C.tooltip],
+                    C![C.gizmo, C.video_icon, C.tooltip],
                     span![
                         C![C.tooltiptext],
                         "Musikvideo",
                     ],
                 ]],
+                match &song.language {
+                    Some(language) => div![
+                        C![C.gizmo, C.flag_icon, C.tooltip],
+                        span![C![C.tooltiptext], language],
+                    ],
+                    None => empty![],
+                },
+                match &song.genre {
+                    Some(genre) => div![
+                        C![C.gizmo, C.note_icon, C.tooltip],
+                        span![C![C.tooltiptext], genre],
+                    ],
+                    None => empty![],
+                },
             ],
         ]
     };
@@ -129,7 +187,8 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
             input![
                 input_ev(Ev::Input, Msg::Search),
                 attrs! {
-                    At::Placeholder => "Search",
+                    At::Placeholder => "Sök",
+                    At::Value => model.query,
                 },
                 C![C.song_search_field],
             ],
@@ -163,21 +222,29 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 .filtered_songs
                 .iter()
                 .map(|&i| &model.songs[i])
-                .filter(|song| !model.filter_video || song.video.is_some())
-                .filter(|song| !model.filter_duets || song.duet().is_some())
                 .map(song_card)
-                .take(model.show_elements),
-            //IF![model.show_elements < model.songs.len() => div![C![C.center, C.penguin]]],
+                .take(model.filtered_songs.len() - model.hidden_songs)
+                .take(model.shown_songs),
         ],
     ]
 }
 
 const SONG_LIST_ID: &str = "song_list";
 
-fn get_scroll() -> anyhow::Result<(i32, i32)> {
-    let list = document()
+fn get_song_list_element() -> anyhow::Result<Element> {
+    document()
         .get_element_by_id(SONG_LIST_ID)
-        .ok_or(anyhow!("Failed to access song list element"))?;
+        .ok_or(anyhow!("Failed to access song list element"))
+}
+
+fn scroll_to_top() {
+    if let Ok(elem) = get_song_list_element() {
+        elem.scroll_to_with_x_and_y(0.0, 0.0);
+    }
+}
+
+fn get_scroll() -> anyhow::Result<(i32, i32)> {
+    let list = get_song_list_element()?;
     let scroll = list.scroll_top();
     let height = list.client_height();
     let max = (list.scroll_height() - height).max(0);
