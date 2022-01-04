@@ -133,6 +133,7 @@ body {
 	-webkit-box-flex: 1;
 	-ms-flex: 1;
 	flex: 1;
+	flex-basis: max-content;
 	margin: 1em;
 }
 
@@ -161,11 +162,18 @@ body {
 .song_gizmos {
 	flex-grow: 0;
 	flex-shrink: 1;
-	padding-top: 1.5em;
+
+	display: flex;
+	flex-direction: row-reverse;
+	flex-wrap: wrap;
+
+	padding-top: 1em;
+	padding-bottom: 1em;
+	padding-right: 0.5em;
 }
 
 .song_gizmos div {
-	margin-right: 1em;
+	margin: 0.5em;
 }
 
 .gizmo {

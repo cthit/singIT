@@ -142,6 +142,27 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
             ],
             div![
                 C![C.song_gizmos],
+                match &song.genre {
+                    Some(genre) => div![
+                        C![C.gizmo, C.note_icon, C.tooltip],
+                        span![C![C.tooltiptext], genre],
+                    ],
+                    None => empty![],
+                },
+                match &song.language {
+                    Some(language) => div![
+                        C![C.gizmo, C.flag_icon, C.tooltip],
+                        span![C![C.tooltiptext], language],
+                    ],
+                    None => empty![],
+                },
+                IF![song.video.is_some() => div![
+                    C![C.gizmo, C.video_icon, C.tooltip],
+                    span![
+                        C![C.tooltiptext],
+                        "Musikvideo",
+                    ],
+                ]],
                 match (&song.duet_singer_1, &song.duet_singer_2) {
                     (Some(p1), Some(p2)) => div![
                         C![C.gizmo, C.duet_icon, C.tooltip],
@@ -155,27 +176,6 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                         ],
                     ],
                     _ => empty![],
-                },
-                IF![song.video.is_some() => div![
-                    C![C.gizmo, C.video_icon, C.tooltip],
-                    span![
-                        C![C.tooltiptext],
-                        "Musikvideo",
-                    ],
-                ]],
-                match &song.language {
-                    Some(language) => div![
-                        C![C.gizmo, C.flag_icon, C.tooltip],
-                        span![C![C.tooltiptext], language],
-                    ],
-                    None => empty![],
-                },
-                match &song.genre {
-                    Some(genre) => div![
-                        C![C.gizmo, C.note_icon, C.tooltip],
-                        span![C![C.tooltiptext], genre],
-                    ],
-                    None => empty![],
                 },
             ],
         ]
