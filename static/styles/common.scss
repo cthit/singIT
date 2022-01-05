@@ -12,6 +12,11 @@ body {
 	-webkit-box-align: center;
 	-ms-flex-align: center;
 	align-items: center;
+	background-image: url(/images/background.svg);
+	background-repeat: no-repeat;
+	background-blend-mode: multiply;
+	background-size: 100vh;
+	background-position: top;
 	background-color: #0c2738;
 	color: #ffffff;
 	height: 100%;
