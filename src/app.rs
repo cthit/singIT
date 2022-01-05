@@ -29,6 +29,11 @@ pub struct Model {
 
     /// Whether we're filtering by duets
     filter_duets: bool,
+
+    query_placeholder: String,
+    query_placeholder_len: usize,
+
+    autotyper: Option<CmdHandle>,
 }
 
 const SCROLL_THRESHOLD: usize = 50;
@@ -49,9 +54,12 @@ pub enum Msg {
 
     /// The user scrolled the song list
     Scroll,
+
+    /// Type stuff in the search input placeholder
+    Autotyper,
 }
 
-pub fn init(_url: Url, _orders: &mut impl Orders<Msg>) -> Model {
+pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
     let mut songs: Vec<Song> =
         serde_json::from_str(include_str!("../static/songs.json")).expect("parse songs");
     songs.shuffle(&mut thread_rng());
@@ -66,6 +74,9 @@ pub fn init(_url: Url, _orders: &mut impl Orders<Msg>) -> Model {
         shown_songs: INITIAL_ELEM_COUNT,
         filter_video: false,
         filter_duets: false,
+        query_placeholder: String::from("Sök"),
+        query_placeholder_len: 0,
+        autotyper: Some(orders.perform_cmd_with_handle(timeout(500, || Msg::Autotyper))),
     }
 }
 
@@ -81,7 +92,7 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             if model.query.is_empty() {
                 model.filter_duets = false;
                 model.filter_video = false;
-                update(Msg::Shuffle, model, orders)
+                update(Msg::Shuffle, model, orders);
             } else {
                 let query = ParsedQuery::parse(&model.query);
                 model.filter_duets = query.duet == Some(true);
@@ -121,6 +132,7 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             scroll_to_top();
             model.query.clear();
             model.songs.shuffle(&mut thread_rng());
+            autotype_song(model, orders);
         }
         Msg::Scroll => {
             let (scroll, max_scroll) = match get_scroll() {
@@ -139,6 +151,20 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             if scroll_left < ELEMENT_HEIGHT * SCROLL_THRESHOLD as i32 {
                 model.shown_songs += 1;
                 orders.perform_cmd(timeout(32 /* ms */, || Msg::Scroll));
+            }
+        }
+        Msg::Autotyper => {
+            model.query_placeholder_len += 1;
+            while !model
+                .query_placeholder
+                .is_char_boundary(model.query_placeholder_len)
+            {
+                model.query_placeholder_len += 1;
+            }
+
+            if model.query_placeholder_len < model.query_placeholder.len() {
+                model.autotyper =
+                    Some(orders.perform_cmd_with_handle(timeout(80, || Msg::Autotyper)));
             }
         }
     }
@@ -206,12 +232,12 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
         div![
             C![C.song_search_bar],
             input![
+                C![C.song_search_field],
                 input_ev(Ev::Input, Msg::Search),
                 attrs! {
-                    At::Placeholder => "Sök",
+                    At::Placeholder => &model.query_placeholder[..model.query_placeholder_len],
                     At::Value => model.query,
                 },
-                C![C.song_search_field],
             ],
             button![
                 C![C.song_sort_button, C.tooltip],
@@ -248,6 +274,13 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 .take(model.shown_songs),
         ],
     ]
+}
+
+pub fn autotype_song(model: &mut Model, orders: &mut impl Orders<Msg>) {
+    let (_, song) = &model.songs[0];
+    model.query_placeholder = ParsedQuery::random(song, &mut thread_rng()).to_string();
+    model.query_placeholder_len = 0;
+    model.autotyper = Some(orders.perform_cmd_with_handle(timeout(100, || Msg::Autotyper)));
 }
 
 const SONG_LIST_ID: &str = "song_list";

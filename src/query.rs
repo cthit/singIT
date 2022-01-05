@@ -1,3 +1,6 @@
+use crate::song::Song;
+use rand::seq::SliceRandom;
+use rand::Rng;
 use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
 use std::ops::Not;
@@ -52,6 +55,56 @@ impl<'a> ParsedQuery<'a> {
         }
 
         parsed
+    }
+
+    /// Generate a parsed query with a few random fields matching a song
+    pub fn random<R: Rng>(song: &'a Song, rng: &mut R) -> Self {
+        let until_space =
+            |s: &'a str| -> &'a str { s.trim().split_whitespace().next().unwrap_or("") };
+
+        let mut primary_fields: [&dyn Fn(Self) -> Self; 4] = [
+            &|query| Self {
+                plain: Some(Cow::Borrowed(&song.title)),
+                ..query
+            },
+            &|query| Self {
+                plain: Some(Cow::Borrowed(&song.artist)),
+                ..query
+            },
+            &|query| Self {
+                title: Some(until_space(&song.title)),
+                ..query
+            },
+            &|query| Self {
+                artist: Some(until_space(&song.artist)),
+                ..query
+            },
+        ];
+
+        let mut extra_fields: [&dyn Fn(Self) -> Self; 3] = [
+            &|query| Self {
+                language: song.language.as_deref().map(until_space),
+                ..query
+            },
+            &|query| Self {
+                genre: song.genre.as_deref().map(until_space),
+                ..query
+            },
+            &|query| Self {
+                year: song.year.as_deref().map(until_space),
+                ..query
+            },
+        ];
+
+        primary_fields.shuffle(rng);
+        extra_fields.shuffle(rng);
+
+        let primary_fields = primary_fields.into_iter().take(1);
+        let extra_fields = extra_fields.into_iter().take(rng.gen_range(0..2));
+
+        primary_fields
+            .chain(extra_fields)
+            .fold(Self::default(), |query, field| field(query))
     }
 }
 
