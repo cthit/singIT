@@ -3,12 +3,12 @@ use crate::query::ParsedQuery;
 use serde::Deserialize;
 use std::cmp::max;
 
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Song {
     pub title: String,
     pub artist: String,
-    pub cover: Option<String>,
     pub song_hash: String,
+    pub cover: Option<String>,
     pub language: Option<String>,
     pub video: Option<String>,
     pub year: Option<String>,

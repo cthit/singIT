@@ -1,4 +1,5 @@
 use crate::css::C;
+use crate::fuzzy::FuzzyScore;
 use crate::query::ParsedQuery;
 use crate::song::Song;
 use anyhow::anyhow;
@@ -12,12 +13,21 @@ use std::cmp::Reverse;
 use web_sys::Element;
 
 pub struct Model {
-    songs: Vec<Song>,
+    songs: Vec<(Reverse<FuzzyScore>, Song)>,
+
+    /// The search string
     query: String,
-    filtered_songs: Vec<usize>,
-    hidden_songs: usize,
+
+    /// The number of songs currently in view. Goes up when the user scrolls down.
     shown_songs: usize,
+
+    /// The number of songs that didn't match the search critera
+    hidden_songs: usize,
+
+    /// Whether we're filtering by video
     filter_video: bool,
+
+    /// Whether we're filtering by duets
     filter_duets: bool,
 }
 
@@ -25,23 +35,33 @@ const SCROLL_THRESHOLD: usize = 50;
 const INITIAL_ELEM_COUNT: usize = 100;
 
 pub enum Msg {
+    /// The user entered something into the search field
     Search(String),
+
+    /// The user pressed the Toggle Video button
     ToggleVideo,
+
+    /// The user pressed the Toggle Duets button
     ToggleDuets,
+
+    /// The user pressed the Shuffle button
     Shuffle,
+
+    /// The user scrolled the song list
     Scroll,
 }
 
 pub fn init(_url: Url, _orders: &mut impl Orders<Msg>) -> Model {
-    let songs: Vec<Song> =
+    let mut songs: Vec<Song> =
         serde_json::from_str(include_str!("../static/songs.json")).expect("parse songs");
-    let mut filtered_songs: Vec<usize> = (0..songs.len()).collect();
-    filtered_songs.shuffle(&mut thread_rng());
+    songs.shuffle(&mut thread_rng());
 
     Model {
-        songs,
+        songs: songs
+            .into_iter()
+            .map(|song| (Default::default(), song))
+            .collect(),
         query: String::new(),
-        filtered_songs,
         hidden_songs: 0,
         shown_songs: INITIAL_ELEM_COUNT,
         filter_video: false,
@@ -64,19 +84,19 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 update(Msg::Shuffle, model, orders)
             } else {
                 let query = ParsedQuery::parse(&model.query);
-                model.filtered_songs.sort_by_cached_key(|&i| {
-                    let song = &model.songs[i];
-                    let score = song.fuzzy_compare(&query);
-                    if score < Default::default() {
+                model.filter_duets = query.duet == Some(true);
+                model.filter_video = query.video == Some(true);
+
+                // calculate search scores & sort list
+                for (score, song) in model.songs.iter_mut() {
+                    let new_score = song.fuzzy_compare(&query);
+                    if new_score < Default::default() {
                         model.hidden_songs += 1;
                     }
 
-                    let top_score = Reverse(score);
-
-                    (top_score, &song.title, &song.artist, &song.song_hash)
-                });
-                model.filter_duets = query.duet == Some(true);
-                model.filter_video = query.video == Some(true);
+                    *score = Reverse(new_score);
+                }
+                model.songs.sort_unstable();
             }
         }
         Msg::ToggleVideo => {
@@ -100,7 +120,7 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             model.shown_songs = INITIAL_ELEM_COUNT;
             scroll_to_top();
             model.query.clear();
-            model.filtered_songs.shuffle(&mut thread_rng());
+            model.songs.shuffle(&mut thread_rng());
         }
         Msg::Scroll => {
             let (scroll, max_scroll) = match get_scroll() {
@@ -171,6 +191,7 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                             "Duet",
                             div![
                                 C![C.marquee],
+                                // add duplicates to get the repeating marquee effect
                                 p![" 🗲 ", p1, " 🗲 ", p2, " 🗲 ", p1, " 🗲 ", p2]
                             ],
                         ],
@@ -219,11 +240,11 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
             attrs! {At::Id => SONG_LIST_ID},
             ev(Ev::Scroll, |_| Msg::Scroll),
             model
-                .filtered_songs
+                .songs
                 .iter()
-                .map(|&i| &model.songs[i])
+                .map(|(_, song)| song)
                 .map(song_card)
-                .take(model.filtered_songs.len() - model.hidden_songs)
+                .take(model.songs.len() - model.hidden_songs)
                 .take(model.shown_songs),
         ],
     ]
@@ -234,7 +255,7 @@ const SONG_LIST_ID: &str = "song_list";
 fn get_song_list_element() -> anyhow::Result<Element> {
     document()
         .get_element_by_id(SONG_LIST_ID)
-        .ok_or(anyhow!("Failed to access song list element"))
+        .ok_or_else(|| anyhow!("Failed to access song list element"))
 }
 
 fn scroll_to_top() {
