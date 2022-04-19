@@ -11,10 +11,10 @@ pub struct ParsedQuery<'a> {
     pub plain: Option<Cow<'a, str>>,
 
     /// Query a specific title
-    pub title: Option<&'a str>,
+    pub title: Option<Cow<'a, str>>,
 
     /// Query a specific artist
-    pub artist: Option<&'a str>,
+    pub artist: Option<Cow<'a, str>>,
 
     /// Whether the song is a duet
     pub duet: Option<bool>,
@@ -43,8 +43,8 @@ impl<'a> ParsedQuery<'a> {
 
         for (k, v) in kvs {
             match k {
-                "title" => parsed.title = Some(v),
-                "artist" => parsed.artist = Some(v),
+                "title" => parsed.title = Some(Cow::Borrowed(v)),
+                "artist" => parsed.artist = Some(Cow::Borrowed(v)),
                 "duet" => parsed.duet = parse_bool(v),
                 "video" => parsed.video = parse_bool(v),
                 "lang" => parsed.language = Some(v),
@@ -62,6 +62,15 @@ impl<'a> ParsedQuery<'a> {
         let until_space =
             |s: &'a str| -> &'a str { s.trim().split_whitespace().next().unwrap_or("") };
 
+        let join_spaces = |s: &'a str| -> Cow<'a, str> {
+            let s = s.trim();
+            if s.contains(char::is_whitespace) {
+                s.replace(char::is_whitespace, "").into()
+            } else {
+                Cow::Borrowed(s)
+            }
+        };
+
         let mut primary_fields: [&dyn Fn(Self) -> Self; 4] = [
             &|query| Self {
                 plain: Some(Cow::Borrowed(&song.title)),
@@ -72,11 +81,11 @@ impl<'a> ParsedQuery<'a> {
                 ..query
             },
             &|query| Self {
-                title: Some(until_space(&song.title)),
+                title: Some(join_spaces(&song.title)),
                 ..query
             },
             &|query| Self {
-                artist: Some(until_space(&song.artist)),
+                artist: Some(join_spaces(&song.artist)),
                 ..query
             },
         ];

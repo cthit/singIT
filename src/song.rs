@@ -35,14 +35,13 @@ impl Song {
                 match item {
                     Some(item) => {
                         let score = fuzzy::compare(item.chars(), query.chars());
-                        if score < fuzzy::max_score(query) / 2 {
-                            return false;
-                        }
+                        score == fuzzy::max_score(query)
                     }
-                    None => return false,
+                    None => false,
                 }
+            } else {
+                true
             }
-            true
         };
 
         let filter_bool =
@@ -67,12 +66,12 @@ impl Song {
             score = max(title_score, artist_score);
         }
 
-        if let Some(title) = query.title {
+        if let Some(title) = &query.title {
             let new_score = fuzzy::compare(self.title.chars(), title.chars());
             score = max(score, new_score);
         }
 
-        if let Some(artist) = query.artist {
+        if let Some(artist) = &query.artist {
             let new_score = fuzzy::compare(self.artist.chars(), artist.chars());
             score = max(score, new_score);
         }

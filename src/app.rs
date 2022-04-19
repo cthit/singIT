@@ -183,8 +183,16 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
             ],
             div![
                 C![C.song_item_info],
-                div![C![C.song_item_title], song.title.to_string()],
-                div![C![C.song_item_artist], song.artist.to_string()],
+                div![C![C.song_item_title], &song.title],
+                div![
+                    C![C.song_item_artist],
+                    span![&song.artist],
+                    if let Some(year) = song.year.as_ref() {
+                        span![" (", year, ")"]
+                    } else {
+                        empty![]
+                    }
+                ],
             ],
             div![
                 C![C.song_gizmos],
