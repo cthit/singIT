@@ -54,7 +54,7 @@ RUN trunk build --release
 ########################
 ### PRODUCTION STAGE ###
 ########################
-FROM debian:stable-slim
+FROM scratch
 
 # Default logging level
 ENV RUST_LOG="info"
