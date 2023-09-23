@@ -1,6 +1,7 @@
 mod app;
 mod css;
 mod custom_list;
+mod fetch;
 mod fuzzy;
 mod query;
 mod song;

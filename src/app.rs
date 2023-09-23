@@ -1,15 +1,16 @@
 use crate::css::C;
 use crate::custom_list::{fetch_custom_song_list, fetch_custom_song_list_index, CustomLists};
+use crate::fetch::fetch_list_of;
 use crate::fuzzy::FuzzyScore;
 use crate::query::ParsedQuery;
 use crate::song::Song;
-use anyhow::anyhow;
+use gloo_console::error;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use seed::app::cmds::timeout;
 use seed::browser::util::document;
-use seed::{attrs, button, div, empty, error, img, input, p, span, C, IF};
-use seed::{log, prelude::*};
+use seed::prelude::*;
+use seed::{attrs, button, div, empty, img, input, p, span, C, IF};
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use web_sys::Element;
@@ -194,12 +195,9 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             autotype_song(model, orders);
         }
         Msg::Scroll => {
-            let (scroll, max_scroll) = match get_scroll() {
-                Ok(v) => v,
-                Err(e) => {
-                    error!(e);
-                    return;
-                }
+            let Some((scroll, max_scroll)) = get_scroll() else {
+                error!("Failed to get song list element by id:", SONG_LIST_ID);
+                return;
             };
 
             let scroll_left: i32 = max_scroll - scroll;
@@ -344,18 +342,10 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
 }
 
 async fn fetch_songs() -> Option<Msg> {
-    let response = match fetch("/songs").await.and_then(|r| r.check_status()) {
+    let mut songs: Vec<Song> = match fetch_list_of("/songs").await {
         Ok(response) => response,
         Err(e) => {
-            log!("error fetching songs", e);
-            return None;
-        }
-    };
-
-    let mut songs: Vec<Song> = match response.json().await {
-        Ok(v) => v,
-        Err(e) => {
-            log!("error parsing songs", e);
+            error!("Error fetching songs:", e);
             return None;
         }
     };
@@ -374,22 +364,20 @@ pub fn autotype_song(model: &mut Model, orders: &mut impl Orders<Msg>) {
 
 const SONG_LIST_ID: &str = "song_list";
 
-fn get_song_list_element() -> anyhow::Result<Element> {
-    document()
-        .get_element_by_id(SONG_LIST_ID)
-        .ok_or_else(|| anyhow!("Failed to access song list element"))
+fn get_song_list_element() -> Option<Element> {
+    document().get_element_by_id(SONG_LIST_ID)
 }
 
 fn scroll_to_top() {
-    if let Ok(elem) = get_song_list_element() {
+    if let Some(elem) = get_song_list_element() {
         elem.scroll_to_with_x_and_y(0.0, 0.0);
     }
 }
 
-fn get_scroll() -> anyhow::Result<(i32, i32)> {
+fn get_scroll() -> Option<(i32, i32)> {
     let list = get_song_list_element()?;
     let scroll = list.scroll_top();
     let height = list.client_height();
     let max = (list.scroll_height() - height).max(0);
-    Ok((scroll, max))
+    Some((scroll, max))
 }
