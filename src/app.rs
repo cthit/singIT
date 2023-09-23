@@ -1,4 +1,5 @@
 use crate::css::C;
+use crate::custom_list::{fetch_custom_song_list, fetch_custom_song_list_index, CustomLists};
 use crate::fuzzy::FuzzyScore;
 use crate::query::ParsedQuery;
 use crate::song::Song;
@@ -7,27 +8,31 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use seed::app::cmds::timeout;
 use seed::browser::util::document;
-use seed::prelude::*;
 use seed::{attrs, button, div, empty, error, img, input, p, span, C, IF};
+use seed::{log, prelude::*};
 use std::cmp::Reverse;
+use std::collections::HashSet;
 use web_sys::Element;
 
 pub struct Model {
     songs: Vec<(Reverse<FuzzyScore>, Song)>,
 
-    /// The search string
+    /// Custom song lists, lazily loaded.
+    custom_lists: CustomLists,
+
+    /// The search string.
     query: String,
 
-    /// The number of songs currently in view. Goes up when the user scrolls down.
+    /// The number of songs currently in the dom. Goes up when the user scrolls down.
     shown_songs: usize,
 
-    /// The number of songs that didn't match the search critera
+    /// The number of songs that didn't match the search critera.
     hidden_songs: usize,
 
-    /// Whether we're filtering by video
+    /// Whether we're filtering by video.
     filter_video: bool,
 
-    /// Whether we're filtering by duets
+    /// Whether we're filtering by duets.
     filter_duets: bool,
 
     query_placeholder: String,
@@ -36,10 +41,35 @@ pub struct Model {
     autotyper: Option<CmdHandle>,
 }
 
+#[derive(Default)]
+pub enum Loading<T> {
+    /// The resource has not started loading.
+    #[default]
+    NotLoaded,
+
+    /// The resource is currently loading.
+    InProgress,
+
+    /// The resource has loaded.
+    Loaded(T),
+}
+
 const SCROLL_THRESHOLD: usize = 50;
 const INITIAL_ELEM_COUNT: usize = 100;
 
 pub enum Msg {
+    /// Loaded songs.
+    Songs(Vec<Song>),
+
+    /// Loaded custom song index.
+    CustomSongLists(Vec<String>),
+
+    /// Loaded custom song list.
+    CustomSongList {
+        list: String,
+        song_hashes: HashSet<String>,
+    },
+
     /// The user entered something into the search field
     Search(String),
 
@@ -60,15 +90,12 @@ pub enum Msg {
 }
 
 pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
-    let mut songs: Vec<Song> =
-        serde_json::from_str(include_str!("../static/songs.json")).expect("parse songs");
-    songs.shuffle(&mut thread_rng());
+    orders.perform_cmd(fetch_songs());
+    orders.perform_cmd(fetch_custom_song_list_index());
 
     Model {
-        songs: songs
-            .into_iter()
-            .map(|song| (Default::default(), song))
-            .collect(),
+        songs: vec![],
+        custom_lists: Default::default(),
         query: String::new(),
         hidden_songs: 0,
         shown_songs: INITIAL_ELEM_COUNT,
@@ -80,35 +107,67 @@ pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
     }
 }
 
+fn update_song_list(model: &mut Model, orders: &mut impl Orders<Msg>) {
+    model.hidden_songs = 0;
+    model.shown_songs = INITIAL_ELEM_COUNT;
+    scroll_to_top();
+
+    if model.query.is_empty() {
+        model.filter_duets = false;
+        model.filter_video = false;
+        update(Msg::Shuffle, model, orders);
+    } else {
+        let query = ParsedQuery::parse(&model.query);
+        model.filter_duets = query.duet == Some(true);
+        model.filter_video = query.video == Some(true);
+
+        if let Some(name) = query.list {
+            if let Some(l @ Loading::NotLoaded) = model.custom_lists.get_mut(name) {
+                orders.perform_cmd(fetch_custom_song_list(name.to_string()));
+                *l = Loading::InProgress;
+            }
+        }
+
+        // calculate search scores & sort list
+        for (score, song) in model.songs.iter_mut() {
+            let new_score = song.fuzzy_compare(&query, &model.custom_lists);
+            if new_score < Default::default() {
+                model.hidden_songs += 1;
+            }
+
+            *score = Reverse(new_score);
+        }
+        model.songs.sort_unstable();
+    }
+}
+
 pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
-        Msg::Search(query) => {
-            model.hidden_songs = 0;
-            model.shown_songs = INITIAL_ELEM_COUNT;
-            scroll_to_top();
+        Msg::Songs(songs) => {
+            model.songs = songs
+                .into_iter()
+                .map(|song| (Default::default(), song))
+                .collect();
+        }
+        Msg::CustomSongLists(lists) => {
+            model.custom_lists = lists
+                .into_iter()
+                .map(|list| (list, Loading::NotLoaded))
+                .collect();
+        }
+        Msg::CustomSongList { list, song_hashes } => {
+            let query = ParsedQuery::parse(&model.query);
+            let update_list = query.list == Some(&list);
 
-            model.query = query;
+            *model.custom_lists.entry(list).or_default() = Loading::Loaded(song_hashes);
 
-            if model.query.is_empty() {
-                model.filter_duets = false;
-                model.filter_video = false;
-                update(Msg::Shuffle, model, orders);
-            } else {
-                let query = ParsedQuery::parse(&model.query);
-                model.filter_duets = query.duet == Some(true);
-                model.filter_video = query.video == Some(true);
-
-                // calculate search scores & sort list
-                for (score, song) in model.songs.iter_mut() {
-                    let new_score = song.fuzzy_compare(&query);
-                    if new_score < Default::default() {
-                        model.hidden_songs += 1;
-                    }
-
-                    *score = Reverse(new_score);
-                }
-                model.songs.sort_unstable();
+            if update_list {
+                update_song_list(model, orders);
             }
+        }
+        Msg::Search(query) => {
+            model.query = query;
+            update_song_list(model, orders);
         }
         Msg::ToggleVideo => {
             let mut query = ParsedQuery::parse(&model.query);
@@ -282,6 +341,28 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 .take(model.shown_songs),
         ],
     ]
+}
+
+async fn fetch_songs() -> Option<Msg> {
+    let response = match fetch("/songs").await.and_then(|r| r.check_status()) {
+        Ok(response) => response,
+        Err(e) => {
+            log!("error fetching songs", e);
+            return None;
+        }
+    };
+
+    let mut songs: Vec<Song> = match response.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            log!("error parsing songs", e);
+            return None;
+        }
+    };
+
+    songs.shuffle(&mut thread_rng());
+
+    Some(Msg::Songs(songs))
 }
 
 pub fn autotype_song(model: &mut Model, orders: &mut impl Orders<Msg>) {

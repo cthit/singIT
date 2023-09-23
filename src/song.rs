@@ -1,3 +1,5 @@
+use crate::app::Loading;
+use crate::custom_list::CustomLists;
 use crate::fuzzy::{self, FuzzyScore};
 use crate::query::ParsedQuery;
 use serde::Deserialize;
@@ -27,8 +29,8 @@ impl Song {
             .zip(self.duet_singer_2.as_deref())
     }
 
-    pub fn fuzzy_compare(&self, query: &ParsedQuery) -> FuzzyScore {
-        let bad = || -1;
+    pub fn fuzzy_compare(&self, query: &ParsedQuery, custom_lists: &CustomLists) -> FuzzyScore {
+        let bad: FuzzyScore = -1;
 
         let filter_strs = |query: Option<&str>, item: Option<&str>| {
             if let Some(query) = query {
@@ -56,7 +58,17 @@ impl Song {
         ];
 
         if !filters.iter().all(|f| f()) {
-            return bad();
+            return bad;
+        }
+
+        if let Some(list) = query.list {
+            let Some(Loading::Loaded(list)) = custom_lists.get(list) else {
+                return bad;
+            };
+
+            if !list.contains(&self.song_hash) {
+                return bad;
+            }
         }
 
         let mut score = FuzzyScore::default();

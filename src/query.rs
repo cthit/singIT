@@ -30,6 +30,9 @@ pub struct ParsedQuery<'a> {
 
     /// Query from a specifc year
     pub year: Option<&'a str>,
+
+    /// Query songs from the specified custom list.
+    pub list: Option<&'a str>,
 }
 
 impl<'a> ParsedQuery<'a> {
@@ -50,6 +53,7 @@ impl<'a> ParsedQuery<'a> {
                 "lang" => parsed.language = Some(v),
                 "genre" => parsed.genre = Some(v),
                 "year" => parsed.year = Some(v),
+                "list" => parsed.list = Some(v),
                 _ => {}
             }
         }
@@ -59,8 +63,7 @@ impl<'a> ParsedQuery<'a> {
 
     /// Generate a parsed query with a few random fields matching a song
     pub fn random<R: Rng>(song: &'a Song, rng: &mut R) -> Self {
-        let until_space =
-            |s: &'a str| -> &'a str { s.trim().split_whitespace().next().unwrap_or("") };
+        let until_space = |s: &'a str| -> &'a str { s.split_whitespace().next().unwrap_or("") };
 
         let join_spaces = |s: &'a str| -> Cow<'a, str> {
             let s = s.trim();
@@ -119,8 +122,8 @@ impl<'a> ParsedQuery<'a> {
 
 fn parse_bool(s: &str) -> Option<bool> {
     match s {
-        "true" | "yes" => Some(true),
-        "false" | "no" => Some(false),
+        "true" | "yes" | "y" => Some(true),
+        "false" | "no" | "n" => Some(false),
         _ => None,
     }
 }
@@ -137,7 +140,7 @@ fn extract_plain(s: &str) -> Option<Cow<str>> {
                 a
             });
 
-    plain.is_empty().not().then(|| Cow::Owned(plain))
+    plain.is_empty().not().then_some(Cow::Owned(plain))
 }
 
 fn extract_key_values(s: &str) -> impl Iterator<Item = (&str, &str)> {
@@ -173,6 +176,7 @@ impl Display for ParsedQuery<'_> {
         w("lang:", display(&self.language))?;
         w("genre:", display(&self.genre))?;
         w("year:", display(&self.year))?;
+        w("list:", display(&self.list))?;
 
         Ok(())
     }
