@@ -13,6 +13,8 @@ use seed::prelude::*;
 use seed::{attrs, button, div, empty, img, input, p, span, C, IF};
 use std::cmp::Reverse;
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use web_sys::Element;
 
 pub struct Model {
@@ -40,6 +42,9 @@ pub struct Model {
     query_placeholder_len: usize,
 
     autotyper: Option<CmdHandle>,
+
+    /// URLs of some defaults for songs with missing cover art.
+    default_song_covers: Vec<&'static str>,
 }
 
 #[derive(Default)]
@@ -94,6 +99,10 @@ pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
     orders.perform_cmd(fetch_songs());
     orders.perform_cmd(fetch_custom_song_list_index());
 
+    // get list of default song covers. see build.rs
+    const DEFAULT_SONG_COVERS: &str = env!("DEFAULT_SONG_COVERS");
+    let default_song_covers = DEFAULT_SONG_COVERS.split(',').collect();
+
     Model {
         songs: vec![],
         custom_lists: Default::default(),
@@ -105,6 +114,7 @@ pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
         query_placeholder: String::from("Sök"),
         query_placeholder_len: 0,
         autotyper: Some(orders.perform_cmd_with_handle(timeout(500, || Msg::Autotyper))),
+        default_song_covers,
     }
 }
 
@@ -228,6 +238,7 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 }
 
 pub fn view(model: &Model) -> Vec<Node<Msg>> {
+
     let song_card = |song: &Song| -> Node<Msg> {
         div![
             C![C.song_item],
@@ -235,7 +246,16 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 C![C.song_item_cover],
                 match song.cover {
                     Some(_) => attrs! {At::Src => format!("/images/songs/{}.png", song.song_hash)},
-                    None => attrs! {At::Src => "/images/default_cover.png"},
+                    None => {
+                        // use a DefaultHasher to turn the song_hash string into a number we can
+                        // use to give the song a psuedo-random default cover.
+                        let mut hasher = DefaultHasher::new();
+                        song.song_hash.hash(&mut hasher);
+                        let hash = hasher.finish() as usize;
+                        let cover_i = hash % model.default_song_covers.len();
+                        let cover = model.default_song_covers[cover_i];
+                        attrs! { At::Src => cover }
+                    }
                 },
             ],
             div![
