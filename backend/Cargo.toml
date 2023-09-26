@@ -1,6 +1,6 @@
 [package]
 name = "singit_srv"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Joakim Hulthe <joakim@hulthe.net"]
 edition = "2021"
 
