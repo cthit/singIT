@@ -10,7 +10,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use seed::app::cmds::timeout;
 use seed::browser::util::document;
-use seed::prelude::*;
+use seed::{a, prelude::*};
 use seed::{attrs, button, div, empty, img, input, p, span, C, IF};
 use std::cmp::Reverse;
 use std::collections::hash_map::DefaultHasher;
@@ -309,8 +309,7 @@ pub fn view_songs(model: &Model) -> Node<Msg> {
             img![
                 C![C.song_item_cover],
                 match song.cover {
-                    Some(_) =>
-                        attrs! {At::Src => format!("/images/songs/{}.png", song.song_hash)},
+                    Some(_) => attrs! {At::Src => format!("/images/songs/{}.png", song.song_hash)},
                     None => {
                         // use a DefaultHasher to turn the song_hash string into a number we can
                         // use to give the song a psuedo-random default cover.
@@ -394,6 +393,12 @@ pub fn view_songs(model: &Model) -> Node<Msg> {
 
 pub fn view(model: &Model) -> Vec<Node<Msg>> {
     vec![
+        a![
+            attrs! {
+                At::Href => "/login/gamma"
+            },
+            "Login with Gamma"
+        ],
         div![
             C![C.song_search_bar],
             input![

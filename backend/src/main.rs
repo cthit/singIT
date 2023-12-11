@@ -10,13 +10,14 @@ use actix_files::NamedFile;
 use actix_web::{
     get,
     middleware::Logger,
-    web::{self, Json},
+    web::{self, Json, Redirect},
     App, HttpRequest, HttpServer, Responder,
 };
 use clap::Parser;
 use diesel::{ExpressionMethods, QueryDsl, Queryable, Selectable, SelectableHelper};
 use diesel_async::RunQueryDsl;
 use dotenv::dotenv;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbPool;
@@ -126,6 +127,51 @@ async fn custom_list(pool: web::Data<DbPool>, path: web::Path<String>) -> impl R
     Json(list_entries)
 }
 
+#[get("/login/gamma")]
+async fn login_with_gamma(opt: web::Data<Arc<Opt>>) -> impl Responder {
+    // 1. Generate state to use towards gamma
+    // 2. Call gamma with values
+    let state: String = thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+
+    let client = reqwest::Client::new();
+    let auth_resp = client
+        .get(&opt.gamma_auth_uri)
+        .query(&[
+            ("response_type", "code"),
+            ("client_id", &opt.gamma_client_id),
+            ("redirect_uri", &opt.gamma_redirect_uri),
+            ("state", &state),
+        ])
+        .build()
+        .expect("Failed to build auth URI")
+        .url()
+        .to_string();
+
+    // TODO: Set cookie in FE with state so we can check it later.
+    Redirect::to(auth_resp.to_string()).temporary()
+}
+
+#[derive(Deserialize)]
+struct RedirectParams {
+    state: String,
+    code: String,
+}
+
+#[get("/login/gamma/redirect")]
+async fn gamma_redirect(
+    queries: web::Query<RedirectParams>,
+    opt: web::Data<Arc<Opt>>,
+) -> impl Responder {
+    // TODO: Send code to auth server to compare
+    // TODO: Set cookie with auth info to keep track of logged in users.
+
+    String::from("LOL")
+}
+
 #[derive(Parser)]
 pub struct Opt {
     /// Address to bind to.
@@ -143,6 +189,22 @@ pub struct Opt {
     /// Directory where song covers are stored.
     #[clap(short, long, env = "COVERS_DIR")]
     covers_dir: PathBuf,
+
+    /// Client ID to auth against gamma.
+    #[clap(long, env = "GAMMA_CLIENT_ID")]
+    gamma_client_id: String,
+
+    /// Client secret to auth against gamma.
+    #[clap(long, env = "GAMMA_CLIENT_SECRET")]
+    gamma_client_secret: String,
+
+    /// Redirect URI to use to auth against gamma.
+    #[clap(long, env = "GAMMA_REDIRECT_URI")]
+    gamma_redirect_uri: String,
+
+    /// The auth URI for the auth call to gamma.
+    #[clap(long, env = "GAMMA_AUTH_URI")]
+    gamma_auth_uri: String,
 }
 
 #[actix_web::main]
@@ -166,6 +228,7 @@ async fn main() -> eyre::Result<()> {
                 .service(song_image)
                 .service(custom_list)
                 .service(custom_lists)
+                .service(login_with_gamma)
                 .route("/{filename:.*}", web::get().to(index))
         }
     };
