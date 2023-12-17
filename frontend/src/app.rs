@@ -9,11 +9,11 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use seed::app::cmds::timeout;
 use seed::browser::util::document;
-use seed::prelude::*;
+use seed::{a, prelude::*};
 use seed::{attrs, button, div, empty, img, input, p, span, C, IF};
 use std::cmp::Reverse;
-use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use web_sys::Element;
 
@@ -238,7 +238,6 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 }
 
 pub fn view(model: &Model) -> Vec<Node<Msg>> {
-
     let song_card = |song: &Song| -> Node<Msg> {
         div![
             C![C.song_item],
@@ -357,6 +356,11 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 .map(song_card)
                 .take(model.songs.len() - model.hidden_songs)
                 .take(model.shown_songs),
+        ],
+        a![
+            C![C.login_button],
+            attrs! { At::Href => "/login" },
+            span!["LOGIN"],
         ],
     ]
 }

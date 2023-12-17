@@ -278,6 +278,34 @@ body::after {
 	100% { transform: rotate(360deg); }
 }
 
+.login_button {
+	position: absolute;
+	font-size: larger;
+	font-weight: bold;
+	font-family: Cairo;
+	bottom: 1em;
+	right: 1em;
+	height: 5rem;
+	width: 5rem;
+	border-radius: 2.5rem;
+	color: white;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: solid white;
+	overflow: hidden;
+	text-decoration: unset;
+}
+
+.login_button > * {
+	background-color: #5598be;
+	color: white;
+	width: 100%;
+	text-align: center;
+	border-top: solid 0.12rem;
+	border-bottom: solid 0.12rem;
+}
+
  /* Tooltip container */
  .tooltip {
 	position: relative;
