@@ -1,0 +1,12 @@
+[package]
+name = "ultrascraper"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "4.4.4", features = ["derive", "env"] }
+eyre = "0.6.8"
+md5 = "0.7.0"
+tokio = { version = "1.32.0", features = ["rt", "fs", "macros", "sync", "io-util"] }
