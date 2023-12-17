@@ -7,16 +7,20 @@ use std::{
 };
 
 use actix_files::NamedFile;
+use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
+use actix_utils::future::{ready, Ready};
 use actix_web::{
+    cookie::Key,
     get,
     middleware::Logger,
     web::{self, Json, Redirect},
-    App, HttpRequest, HttpServer, Responder,
+    App, FromRequest, HttpRequest, HttpServer, Responder,
 };
 use clap::Parser;
 use diesel::{ExpressionMethods, QueryDsl, Queryable, Selectable, SelectableHelper};
 use diesel_async::RunQueryDsl;
 use dotenv::dotenv;
+use log::warn;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -127,8 +131,10 @@ async fn custom_list(pool: web::Data<DbPool>, path: web::Path<String>) -> impl R
     Json(list_entries)
 }
 
+const GAMMA_AUTH_STATE_KEY: &str = "GAMMA_AUTH_STATE";
+
 #[get("/login/gamma")]
-async fn login_with_gamma(opt: web::Data<Arc<Opt>>) -> impl Responder {
+async fn login_with_gamma(opt: web::Data<Arc<Opt>>, session: Session) -> impl Responder {
     // 1. Generate state to use towards gamma
     // 2. Call gamma with values
     let state: String = thread_rng()
@@ -151,7 +157,10 @@ async fn login_with_gamma(opt: web::Data<Arc<Opt>>) -> impl Responder {
         .url()
         .to_string();
 
-    // TODO: Set cookie in FE with state so we can check it later.
+    session
+        .insert(GAMMA_AUTH_STATE_KEY.to_string(), state)
+        .expect("Failed to set state cookie");
+
     Redirect::to(auth_resp.to_string()).temporary()
 }
 
@@ -161,15 +170,103 @@ struct RedirectParams {
     code: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct AuthTokenRequest {
+    grant_type: String,
+    redirect_uri: String,
+    client_id: String,
+    client_secret: String,
+    code: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AuthTokenResponse {
+    access_token: String,
+    expires_in: i64,
+    token_type: String,
+}
+
+const ACCESS_TOKEN_SESSION_KEY: &str = "access_token";
+
 #[get("/login/gamma/redirect")]
 async fn gamma_redirect(
     queries: web::Query<RedirectParams>,
     opt: web::Data<Arc<Opt>>,
+    session: Session,
 ) -> impl Responder {
-    // TODO: Send code to auth server to compare
-    // TODO: Set cookie with auth info to keep track of logged in users.
+    let expected_state: String = session
+        .get(GAMMA_AUTH_STATE_KEY)
+        .expect("Failed to read session store")
+        .expect("Failed to deserialize gamma auth state key");
+    let received_state = &queries.state;
+    if &expected_state != received_state {
+        warn!("Expected state '{expected_state}', got state '{received_state}'");
+        panic!("State does not match the expected state");
+    }
 
-    String::from("LOL")
+    let form = AuthTokenRequest {
+        grant_type: String::from("authorization_code"),
+        redirect_uri: opt.gamma_redirect_uri.clone(),
+        client_id: opt.gamma_client_id.clone(),
+        client_secret: opt.gamma_client_secret.clone(),
+        code: queries.code.clone(),
+    };
+
+    let client = reqwest::Client::new();
+    let token_resp: AuthTokenResponse = client
+        .post(&opt.gamma_token_uri)
+        .form(&form)
+        .send()
+        .await
+        .expect("Failed to send token request to gamma")
+        .json()
+        .await
+        .expect("Failed to deserialize auth response content");
+
+    session
+        .insert(ACCESS_TOKEN_SESSION_KEY, token_resp.access_token)
+        .expect("Failed to insert auth token in session");
+
+    Redirect::to("/").temporary()
+}
+
+#[derive(Debug, Clone)]
+struct User {
+    access_token: String,
+    // TODO: Implement when we support gamma me.
+    // cid: String,
+}
+
+impl FromRequest for User {
+    type Error = actix_web::error::Error;
+    type Future = Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, payload: &mut actix_web::dev::Payload) -> Self::Future {
+        let session = Session::from_request(req, payload)
+            .into_inner()
+            .expect("Failed to retrieve session");
+
+        let access_token: String = session
+            .get(ACCESS_TOKEN_SESSION_KEY)
+            .expect("Failed to retrieve session access token, user not authorized")
+            .expect("Failed to deserialize session key, user not authorized");
+
+        ready(Ok(Self {
+            access_token: access_token,
+        }))
+    }
+}
+
+#[get("/auth/test")]
+async fn auth_test(user: User) -> impl Responder {
+    String::from("LOGGED IN!")
+}
+
+#[get("/auth/logout")]
+async fn logout(session: Session) -> impl Responder {
+    session.clear();
+
+    Redirect::to("/").temporary()
 }
 
 #[derive(Parser)]
@@ -205,6 +302,18 @@ pub struct Opt {
     /// The auth URI for the auth call to gamma.
     #[clap(long, env = "GAMMA_AUTH_URI")]
     gamma_auth_uri: String,
+
+    /// The token URI for the token call to gamma.
+    #[clap(long, env = "GAMMA_TOKEN_URI")]
+    gamma_token_uri: String,
+
+    /// The me URI for the 'me' call to gamma.
+    #[clap(long, env = "GAMMA_ME_URI")]
+    gamma_me_uri: String,
+
+    /// The secret key to use when encrypting cookies
+    #[clap(long, env = "COOKIE_SECRET_KEY")]
+    cookie_secret_key: String,
 }
 
 #[actix_web::main]
@@ -218,9 +327,14 @@ async fn main() -> eyre::Result<()> {
         let opt = Arc::clone(&opt);
         move || {
             let logger = Logger::default();
+            let secret_key = Key::from(opt.cookie_secret_key.as_bytes());
 
             App::new()
                 .wrap(logger)
+                .wrap(SessionMiddleware::new(
+                    CookieSessionStore::default(),
+                    secret_key,
+                ))
                 .app_data(web::Data::new(db_pool.clone()))
                 .app_data(web::Data::new(Arc::clone(&opt)))
                 .service(root)
@@ -229,6 +343,9 @@ async fn main() -> eyre::Result<()> {
                 .service(custom_list)
                 .service(custom_lists)
                 .service(login_with_gamma)
+                .service(gamma_redirect)
+                .service(auth_test)
+                .service(logout)
                 .route("/{filename:.*}", web::get().to(index))
         }
     };
