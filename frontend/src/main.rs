@@ -5,6 +5,7 @@ mod fetch;
 mod fuzzy;
 mod query;
 mod song;
+mod category;
 
 use seed::App;
 
