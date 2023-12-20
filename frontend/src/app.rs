@@ -12,12 +12,15 @@ use seed::browser::util::document;
 use seed::prelude::*;
 use seed::{attrs, button, div, empty, img, input, p, span, C, IF};
 use std::cmp::Reverse;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use web_sys::Element;
+use crate::category::Category;
+
 
 pub struct Model {
+
     songs: Vec<(Reverse<FuzzyScore>, Song)>,
 
     /// Custom song lists, lazily loaded.
@@ -38,6 +41,9 @@ pub struct Model {
     /// Whether we're filtering by duets.
     filter_duets: bool,
 
+    /// Which screen is currently being shown
+    screen: Screen,
+
     query_placeholder: String,
     query_placeholder_len: usize,
 
@@ -45,6 +51,16 @@ pub struct Model {
 
     /// URLs of some defaults for songs with missing cover art.
     default_song_covers: Vec<&'static str>,
+}
+
+#[derive(Default, PartialEq)]
+enum Screen {
+    /// The main song list.
+    #[default]
+    Songs,
+
+    /// The list of song categories.
+    Categories,
 }
 
 #[derive(Default)]
@@ -93,6 +109,9 @@ pub enum Msg {
 
     /// Type stuff in the search input placeholder
     Autotyper,
+
+    /// Change screen
+    ChangeScreen(Screen),
 }
 
 pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
@@ -104,6 +123,7 @@ pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
     let default_song_covers = DEFAULT_SONG_COVERS.split(',').collect();
 
     Model {
+        screen: Screen::Categories,
         songs: vec![],
         custom_lists: Default::default(),
         query: String::new(),
@@ -234,18 +254,53 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     Some(orders.perform_cmd_with_handle(timeout(80, || Msg::Autotyper)));
             }
         }
+        Msg::ChangeScreen(screen) => {
+            model.screen = screen;
+        }
     }
 }
 
-pub fn view(model: &Model) -> Vec<Node<Msg>> {
+pub fn view_categories(model: &Model) -> Node<Msg> {
+    let category_card = |category: &Category| -> Node<Msg> {
+        let title = category.title.replace(" ", "");
+        div![
+            C![C.category_item],
+            ev(Ev::Click, move |_| Msg::Search(format!("genre:{title}"))),
+            ev(Ev::Click, |_| Msg::ChangeScreen(Screen::Songs)),
+            div![
+                C![C.category_item_info],
+                div![
+                        C![C.gizmo, C.note_icon, C.tooltip],
+                        span![C![C.tooltiptext], &category.title],
+                    ],
+                div![C![C.category_item_title], &category.title],
+            ],
+        ]
+    };
 
+    div![
+            C![C.category_list],
+            attrs! {At::Id => CATEGORY_LIST_ID},
+            model
+                .songs
+                .iter()
+                .filter(|(_, song)| song.genre.is_some())
+                .map(|(_, song)| Category{title: song.genre.clone().unwrap()})
+                .collect::<BTreeSet<Category>>()
+                .iter()
+                .map(category_card)
+
+        ]
+}
+
+pub fn view_songs(model: &Model) -> Node<Msg> {
     let song_card = |song: &Song| -> Node<Msg> {
         div![
             C![C.song_item],
             img![
                 C![C.song_item_cover],
                 match song.cover {
-                    Some(_) => attrs! {At::Src => format!("/images/songs/{}.png", song.song_hash)},
+                    Some(_) => attrs! {At::Src => format!("/api/images/songs/{}.png", song.song_hash)},
                     None => {
                         // use a DefaultHasher to turn the song_hash string into a number we can
                         // use to give the song a psuedo-random default cover.
@@ -313,6 +368,21 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
         ]
     };
 
+    div![
+            C![C.song_list],
+            attrs! {At::Id => SONG_LIST_ID},
+            ev(Ev::Scroll, |_| Msg::Scroll),
+            model
+                .songs
+                .iter()
+                .map(|(_, song)| song)
+                .map(song_card)
+                .take(model.songs.len() - model.hidden_songs)
+                .take(model.shown_songs),
+        ]
+}
+
+pub fn view(model: &Model) -> Vec<Node<Msg>> {
     vec![
         div![
             C![C.song_search_bar],
@@ -323,6 +393,13 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                     At::Placeholder => &model.query_placeholder[..model.query_placeholder_len],
                     At::Value => model.query,
                 },
+            ],
+            button![
+                C![C.song_category_button, C.tooltip],
+                IF![model.screen == Screen::Categories => C![C.song_category_button_selected]],
+                ev(Ev::Click, |_| Msg::ChangeScreen(Screen::Categories)),
+                span![C![C.tooltiptext], "Show Categories"],
+                "C",
             ],
             button![
                 C![C.song_sort_button, C.tooltip],
@@ -346,23 +423,15 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 "🔀",
             ],
         ],
-        div![
-            C![C.song_list],
-            attrs! {At::Id => SONG_LIST_ID},
-            ev(Ev::Scroll, |_| Msg::Scroll),
-            model
-                .songs
-                .iter()
-                .map(|(_, song)| song)
-                .map(song_card)
-                .take(model.songs.len() - model.hidden_songs)
-                .take(model.shown_songs),
-        ],
+        match model.screen {
+            Screen::Songs => view_songs(model),
+            Screen::Categories => view_categories(model),
+        },
     ]
 }
 
 async fn fetch_songs() -> Option<Msg> {
-    let mut songs: Vec<Song> = match fetch_list_of("/songs").await {
+    let mut songs: Vec<Song> = match fetch_list_of("/api/songs").await {
         Ok(response) => response,
         Err(e) => {
             error!("Error fetching songs:", e);
@@ -383,6 +452,7 @@ pub fn autotype_song(model: &mut Model, orders: &mut impl Orders<Msg>) {
 }
 
 const SONG_LIST_ID: &str = "song_list";
+const CATEGORY_LIST_ID: &str = "category_list";
 
 fn get_song_list_element() -> Option<Element> {
     document().get_element_by_id(SONG_LIST_ID)
