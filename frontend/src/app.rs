@@ -101,6 +101,9 @@ pub enum Msg {
     /// The user pressed the Toggle Duets button
     ToggleDuets,
 
+    /// The user pressed the Categories button
+    ToggleCategories,
+
     /// The user pressed the Shuffle button
     Shuffle,
 
@@ -110,8 +113,6 @@ pub enum Msg {
     /// Type stuff in the search input placeholder
     Autotyper,
 
-    /// Change screen
-    ChangeScreen(Screen),
 }
 
 pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
@@ -216,6 +217,14 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             };
             update(Msg::Search(query.to_string()), model, orders);
         }
+        Msg::ToggleCategories => {
+            if model.screen == Screen::Categories {
+                model.screen = Screen::Songs;
+            } else {
+                model.screen = Screen::Categories;
+            }
+
+        }
         Msg::Shuffle => {
             model.hidden_songs = 0;
             model.shown_songs = INITIAL_ELEM_COUNT;
@@ -254,9 +263,6 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     Some(orders.perform_cmd_with_handle(timeout(80, || Msg::Autotyper)));
             }
         }
-        Msg::ChangeScreen(screen) => {
-            model.screen = screen;
-        }
     }
 }
 
@@ -266,7 +272,7 @@ pub fn view_categories(model: &Model) -> Node<Msg> {
         div![
             C![C.category_item],
             ev(Ev::Click, move |_| Msg::Search(format!("genre:{title}"))),
-            ev(Ev::Click, |_| Msg::ChangeScreen(Screen::Songs)),
+            ev(Ev::Click, |_| Msg::ToggleCategories),
             div![
                 C![C.category_item_info],
                 div![
@@ -397,7 +403,7 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
             button![
                 C![C.song_category_button, C.tooltip],
                 IF![model.screen == Screen::Categories => C![C.song_category_button_selected]],
-                ev(Ev::Click, |_| Msg::ChangeScreen(Screen::Categories)),
+                ev(Ev::Click, |_| Msg::ToggleCategories),
                 span![C![C.tooltiptext], "Show Categories"],
                 "C",
             ],
