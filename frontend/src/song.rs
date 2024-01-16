@@ -36,8 +36,10 @@ impl Song {
             if let Some(query) = query {
                 match item {
                     Some(item) => {
-                        let score = fuzzy::compare(item.chars(), query.chars());
-                        score == fuzzy::max_score(query)
+                        let query_no_whitespace = query.replace(char::is_whitespace, "");
+                        let item_no_whitespace = item.replace(char::is_whitespace, "");
+                        let score = fuzzy::compare(item_no_whitespace.chars(), query_no_whitespace.chars());
+                        score == fuzzy::max_score(&query_no_whitespace)
                     }
                     None => false,
                 }
