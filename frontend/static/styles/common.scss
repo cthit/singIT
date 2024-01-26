@@ -1,3 +1,7 @@
+* {
+	box-sizing: border-box;
+}
+
 body {
 	display: -webkit-box;
 	display: -ms-flexbox;
@@ -61,6 +65,8 @@ body::after {
 	width: 95%;
 	margin: auto;
 	margin-top: 1em;
+	display: flex;
+	flex-direction: row;
 }
 
 .song_search_field {
@@ -71,7 +77,7 @@ body::after {
 	color: #0c2738;
 	margin: 0;
 	float: left;
-	height: 2em;
+	height: 3.4em;
 	border-top-right-radius: 0;
 	border-bottom-right-radius: 0;
 }
@@ -83,6 +89,9 @@ body::after {
 	border-style: none;
 	border-left-style: solid;
 	background-color: #427493;
+	background-size: 60%;
+	background-position: center;
+	background-repeat: no-repeat;
 	transition: 0.4s;
 	color: #ffffff;
 	font-weight: 900;
@@ -99,43 +108,16 @@ body::after {
 }
 
 .song_sort_button_selected {
-	color: #00ff00;
+	background-color: #008000;
+	transition: 0.1s;
+}
+
+.song_sort_button_selected:hover {
+	background-color: #00b000;
 	transition: 0.1s;
 }
 
 .song_sort_button_right {
-	border-top-right-radius: 0.3em;
-	border-bottom-right-radius: 0.3em;
-}
-
-.song_category_button {
-	width: 3em;
-	height: 3.4em;
-	border-radius: 0;
-	border-style: none;
-	border-left-style: solid;
-	background-color: #427493;
-	transition: 0.4s;
-	color: #ffffff;
-	font-weight: 900;
-}
-
-.song_category_button:hover {
-	background-color: #5598be;
-	transition: 0.4s;
-}
-
-.song_category_button:active {
-	background-color: #30566c;
-	transition: 0.1s;
-}
-
-.song_category_button_selected {
-	color: #c62fef;
-	transition: 0.1s;
-}
-
-.song_category_button_right {
 	border-top-right-radius: 0.3em;
 	border-bottom-right-radius: 0.3em;
 }
@@ -272,20 +254,24 @@ body::after {
 	height: 2em;
 }
 
-.duet_icon {
+.icon_duet {
 	background-image: url("/images/duet.svg");
 }
 
-.video_icon {
+.icon_video {
 	background-image: url("/images/video.svg");
 }
 
-.flag_icon {
+.icon_lang {
 	background-image: url("/images/flag.svg");
 }
 
-.note_icon {
+.icon_genre {
 	background-image: url("/images/note.svg");
+}
+
+.icon_shuffle {
+	background-image: url("/images/shuffle.svg");
 }
 
 .hidden {

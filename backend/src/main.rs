@@ -82,7 +82,7 @@ async fn song_image(
     Ok(NamedFile::open(path)?)
 }
 
-#[get("/songs")]
+#[get("/api/songs")]
 async fn songs(pool: web::Data<DbPool>) -> impl Responder {
     use schema::song::dsl::*;
 
@@ -92,7 +92,7 @@ async fn songs(pool: web::Data<DbPool>) -> impl Responder {
     Json(songs)
 }
 
-#[get("/custom/lists")]
+#[get("/api/custom/lists")]
 async fn custom_lists(pool: web::Data<DbPool>) -> impl Responder {
     use schema::custom_list::dsl::*;
 
@@ -102,7 +102,7 @@ async fn custom_lists(pool: web::Data<DbPool>) -> impl Responder {
     Json(lists)
 }
 
-#[get("/custom/list/{list}")]
+#[get("/api/custom/list/{list}")]
 async fn custom_list(pool: web::Data<DbPool>, path: web::Path<String>) -> impl Responder {
     use schema::custom_list::dsl::*;
     use schema::custom_list_entry::dsl::*;
@@ -169,6 +169,9 @@ async fn main() -> eyre::Result<()> {
                 .route("/{filename:.*}", web::get().to(index))
         }
     };
+
+    log::info!("listening on {}:{}", opt.address, opt.port);
+
     HttpServer::new(app)
         .bind((opt.address.as_str(), opt.port))?
         .run()
