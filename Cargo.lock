@@ -2470,6 +2470,8 @@ dependencies = [
  "clap",
  "eyre",
  "md5",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
