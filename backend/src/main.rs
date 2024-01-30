@@ -82,7 +82,7 @@ async fn song_image(
     Ok(NamedFile::open(path)?)
 }
 
-#[get("/api/songs")]
+#[get("/songs")]
 async fn songs(pool: web::Data<DbPool>) -> impl Responder {
     use schema::song::dsl::*;
 
@@ -92,7 +92,7 @@ async fn songs(pool: web::Data<DbPool>) -> impl Responder {
     Json(songs)
 }
 
-#[get("/api/custom/lists")]
+#[get("/custom/lists")]
 async fn custom_lists(pool: web::Data<DbPool>) -> impl Responder {
     use schema::custom_list::dsl::*;
 
@@ -102,7 +102,7 @@ async fn custom_lists(pool: web::Data<DbPool>) -> impl Responder {
     Json(lists)
 }
 
-#[get("/api/custom/list/{list}")]
+#[get("/custom/list/{list}")]
 async fn custom_list(pool: web::Data<DbPool>, path: web::Path<String>) -> impl Responder {
     use schema::custom_list::dsl::*;
     use schema::custom_list_entry::dsl::*;

@@ -310,7 +310,7 @@ pub fn view_songs(model: &Model) -> Node<Msg> {
                 C![C.song_item_cover],
                 match song.cover {
                     Some(_) =>
-                        attrs! {At::Src => format!("/api/images/songs/{}.png", song.song_hash)},
+                        attrs! {At::Src => format!("/images/songs/{}.png", song.song_hash)},
                     None => {
                         // use a DefaultHasher to turn the song_hash string into a number we can
                         // use to give the song a psuedo-random default cover.
@@ -437,7 +437,7 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
 }
 
 async fn fetch_songs() -> Option<Msg> {
-    let mut songs: Vec<Song> = match fetch_list_of("/api/songs").await {
+    let mut songs: Vec<Song> = match fetch_list_of("/songs").await {
         Ok(response) => response,
         Err(e) => {
             error!("Error fetching songs:", e);
