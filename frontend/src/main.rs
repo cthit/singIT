@@ -1,11 +1,11 @@
 mod app;
+mod category;
 mod css;
 mod custom_list;
 mod fetch;
 mod fuzzy;
 mod query;
 mod song;
-mod category;
 
 use seed::App;
 
