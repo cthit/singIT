@@ -1504,7 +1504,7 @@ dependencies = [
 
 [[package]]
 name = "singit_srv"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "actix-files",
  "actix-web",
@@ -1520,7 +1520,7 @@ dependencies = [
 
 [[package]]
 name = "singit_web"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "css_typegen",
  "csv",
