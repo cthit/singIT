@@ -141,32 +141,38 @@ fn update_song_list(model: &mut Model, orders: &mut impl Orders<Msg>) {
     model.shown_songs = INITIAL_ELEM_COUNT;
     scroll_to_top();
 
-    if model.query.is_empty() {
-        model.filter_duets = false;
-        model.filter_video = false;
-        update(Msg::Shuffle, model, orders);
-    } else {
-        let query = ParsedQuery::parse(&model.query);
-        model.filter_duets = query.duet == Some(true);
-        model.filter_video = query.video == Some(true);
+    let query_str = &model.query;
+    let query = ParsedQuery::parse(query_str);
+    model.filter_duets = query.duet == Some(true);
+    model.filter_video = query.video == Some(true);
 
-        if let Some(name) = query.list {
-            if let Some(l @ Loading::NotLoaded) = model.custom_lists.get_mut(name) {
-                orders.perform_cmd(fetch_custom_song_list(name.to_string()));
-                *l = Loading::InProgress;
-            }
+    if let Some(name) = query.list {
+        if let Some(l @ Loading::NotLoaded) = model.custom_lists.get_mut(name) {
+            orders.perform_cmd(fetch_custom_song_list(name.to_string()));
+            *l = Loading::InProgress;
+        }
+    }
+
+    // calculate search scores & sort list
+    for (score, song) in model.songs.iter_mut() {
+        let new_score = song.fuzzy_compare(&query, &model.custom_lists);
+        if new_score < Default::default() {
+            model.hidden_songs += 1;
         }
 
-        // calculate search scores & sort list
-        for (score, song) in model.songs.iter_mut() {
-            let new_score = song.fuzzy_compare(&query, &model.custom_lists);
-            if new_score < Default::default() {
-                model.hidden_songs += 1;
-            }
+        *score = Reverse(new_score);
+    }
 
-            *score = Reverse(new_score);
-        }
+    if query.has_fuzzy_parameters() {
         model.songs.sort_unstable();
+    } else {
+        // if the user didn't input any fuzzy parameters, shuffle the results. this is stylistic
+        // choice. i don't want the same results to show up at the top over and over when the user
+        // didn't search for anything specific.
+        let not_hidden_songs = model.songs.len() - model.hidden_songs;
+        model.songs.sort_unstable_by_key(|(score, _)| *score);
+        model.songs[..not_hidden_songs].shuffle(&mut thread_rng());
+        autotype_song(model, orders);
     }
 }
 
@@ -222,12 +228,12 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             }
         }
         Msg::Shuffle => {
-            model.hidden_songs = 0;
-            model.shown_songs = INITIAL_ELEM_COUNT;
-            scroll_to_top();
-            model.query.clear();
-            model.songs.shuffle(&mut thread_rng());
-            autotype_song(model, orders);
+            // clear fuzzy query parameters and call update_song_list, which will shuffle the list.
+            let mut query = ParsedQuery::parse(&model.query);
+            query.clear_fuzzy_parameters();
+            model.query = query.to_string();
+
+            update_song_list(model, orders);
         }
         Msg::Scroll => {
             let Some((scroll, max_scroll)) = get_scroll() else {
@@ -264,7 +270,7 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
 pub fn view_categories(model: &Model) -> Node<Msg> {
     let category_card = |category: &Category| -> Node<Msg> {
-        let title = category.title.replace(" ", "");
+        let title = category.title.replace(' ', "");
         div![
             C![C.category_item],
             ev(Ev::Click, move |_| Msg::Search(format!("genre:{title}"))),

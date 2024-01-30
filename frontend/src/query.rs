@@ -7,36 +7,40 @@ use std::ops::Not;
 
 #[derive(Default)]
 pub struct ParsedQuery<'a> {
-    /// Unspecified query.
+    /// Unspecified query (fuzzy).
     pub plain: Option<Cow<'a, str>>,
 
-    /// Query a specific title
+    /// Query a specific title (fuzzy).
     pub title: Option<Cow<'a, str>>,
 
-    /// Query a specific artist
+    /// Query a specific artist (fuzzy).
     pub artist: Option<Cow<'a, str>>,
 
-    /// Whether the song is a duet
+    /// Whether the song is a duet (filter).
     pub duet: Option<bool>,
 
-    /// Whether the song has a video
+    /// Whether the song has a video (filter).
     pub video: Option<bool>,
 
-    /// Query a specific language
+    /// Query a specific language (filter).
     pub language: Option<&'a str>,
 
-    /// Query a specific genre
+    /// Query a specific genre (filter).
     pub genre: Option<&'a str>,
 
-    /// Query from a specifc year
+    /// Query from a specifc year (filter).
     pub year: Option<&'a str>,
 
-    /// Query songs from the specified custom list.
+    /// Query songs from the specified custom list (filter).
     pub list: Option<&'a str>,
 }
 
 impl<'a> ParsedQuery<'a> {
     pub fn parse(s: &'a str) -> Self {
+        if s.is_empty() {
+            return Default::default();
+        }
+
         let mut parsed = ParsedQuery {
             plain: extract_plain(s),
             ..Default::default()
@@ -117,6 +121,20 @@ impl<'a> ParsedQuery<'a> {
         primary_fields
             .chain(extra_fields)
             .fold(Self::default(), |query, field| field(query))
+    }
+
+    /// Clear all "fuzzy" query parameters, but leave filters
+    pub fn clear_fuzzy_parameters(&mut self) {
+        self.plain = None;
+        self.title = None;
+        self.artist = None;
+    }
+
+    /// Whether the query contains any "fuzzy" query parameters.
+    pub fn has_fuzzy_parameters(&self) -> bool {
+        [&self.plain, &self.title, &self.artist]
+            .iter()
+            .any(|p| p.is_some())
     }
 }
 
