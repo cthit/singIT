@@ -22,7 +22,8 @@ pub async fn fetch_custom_song_list_index() -> Option<Msg> {
 }
 
 pub async fn fetch_custom_song_list(list: String) -> Option<Msg> {
-    let song_hashes: HashSet<String> = match fetch_list_of(format!("api/custom/list/{list}")).await {
+    let song_hashes: HashSet<String> = match fetch_list_of(format!("api/custom/list/{list}")).await
+    {
         Ok(response) => response.into_iter().collect(),
         Err(e) => {
             error!("Failed fetching custom song list:", e);

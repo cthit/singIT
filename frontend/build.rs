@@ -1,6 +1,6 @@
 use std::fs;
-use std::path::Path;
 use std::io;
+use std::path::Path;
 
 fn main() {
     index_default_covers().expect("index default covers");
