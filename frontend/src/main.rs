@@ -1,4 +1,5 @@
 mod app;
+mod category;
 mod css;
 mod custom_list;
 mod fetch;

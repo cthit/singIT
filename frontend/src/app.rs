@@ -1,3 +1,4 @@
+use crate::category::Category;
 use crate::css::C;
 use crate::custom_list::{fetch_custom_song_list, fetch_custom_song_list_index, CustomLists};
 use crate::fetch::fetch_list_of;
@@ -12,8 +13,8 @@ use seed::browser::util::document;
 use seed::prelude::*;
 use seed::{attrs, button, div, empty, img, input, p, span, C, IF};
 use std::cmp::Reverse;
-use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeSet, HashSet};
 use std::hash::{Hash, Hasher};
 use web_sys::Element;
 
@@ -38,6 +39,9 @@ pub struct Model {
     /// Whether we're filtering by duets.
     filter_duets: bool,
 
+    /// Which screen is currently being shown
+    screen: View,
+
     query_placeholder: String,
     query_placeholder_len: usize,
 
@@ -45,6 +49,16 @@ pub struct Model {
 
     /// URLs of some defaults for songs with missing cover art.
     default_song_covers: Vec<&'static str>,
+}
+
+#[derive(Default, PartialEq)]
+enum View {
+    /// The main song list.
+    #[default]
+    Songs,
+
+    /// The list of song categories.
+    Categories,
 }
 
 #[derive(Default)]
@@ -85,6 +99,9 @@ pub enum Msg {
     /// The user pressed the Toggle Duets button
     ToggleDuets,
 
+    /// The user pressed the Categories button
+    ToggleCategories,
+
     /// The user pressed the Shuffle button
     Shuffle,
 
@@ -104,6 +121,7 @@ pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
     let default_song_covers = DEFAULT_SONG_COVERS.split(',').collect();
 
     Model {
+        screen: Default::default(),
         songs: vec![],
         custom_lists: Default::default(),
         query: String::new(),
@@ -123,32 +141,38 @@ fn update_song_list(model: &mut Model, orders: &mut impl Orders<Msg>) {
     model.shown_songs = INITIAL_ELEM_COUNT;
     scroll_to_top();
 
-    if model.query.is_empty() {
-        model.filter_duets = false;
-        model.filter_video = false;
-        update(Msg::Shuffle, model, orders);
-    } else {
-        let query = ParsedQuery::parse(&model.query);
-        model.filter_duets = query.duet == Some(true);
-        model.filter_video = query.video == Some(true);
+    let query_str = &model.query;
+    let query = ParsedQuery::parse(query_str);
+    model.filter_duets = query.duet == Some(true);
+    model.filter_video = query.video == Some(true);
 
-        if let Some(name) = query.list {
-            if let Some(l @ Loading::NotLoaded) = model.custom_lists.get_mut(name) {
-                orders.perform_cmd(fetch_custom_song_list(name.to_string()));
-                *l = Loading::InProgress;
-            }
+    if let Some(name) = query.list {
+        if let Some(l @ Loading::NotLoaded) = model.custom_lists.get_mut(name) {
+            orders.perform_cmd(fetch_custom_song_list(name.to_string()));
+            *l = Loading::InProgress;
+        }
+    }
+
+    // calculate search scores & sort list
+    for (score, song) in model.songs.iter_mut() {
+        let new_score = song.fuzzy_compare(&query, &model.custom_lists);
+        if new_score < Default::default() {
+            model.hidden_songs += 1;
         }
 
-        // calculate search scores & sort list
-        for (score, song) in model.songs.iter_mut() {
-            let new_score = song.fuzzy_compare(&query, &model.custom_lists);
-            if new_score < Default::default() {
-                model.hidden_songs += 1;
-            }
+        *score = Reverse(new_score);
+    }
 
-            *score = Reverse(new_score);
-        }
+    if query.has_fuzzy_parameters() {
         model.songs.sort_unstable();
+    } else {
+        // if the user didn't input any fuzzy parameters, shuffle the results. this is stylistic
+        // choice. i don't want the same results to show up at the top over and over when the user
+        // didn't search for anything specific.
+        let not_hidden_songs = model.songs.len() - model.hidden_songs;
+        model.songs.sort_unstable_by_key(|(score, _)| *score);
+        model.songs[..not_hidden_songs].shuffle(&mut thread_rng());
+        autotype_song(model, orders);
     }
 }
 
@@ -196,13 +220,20 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             };
             update(Msg::Search(query.to_string()), model, orders);
         }
+        Msg::ToggleCategories => {
+            if model.screen == View::Categories {
+                model.screen = View::Songs;
+            } else {
+                model.screen = View::Categories;
+            }
+        }
         Msg::Shuffle => {
-            model.hidden_songs = 0;
-            model.shown_songs = INITIAL_ELEM_COUNT;
-            scroll_to_top();
-            model.query.clear();
-            model.songs.shuffle(&mut thread_rng());
-            autotype_song(model, orders);
+            // clear fuzzy query parameters and call update_song_list, which will shuffle the list.
+            let mut query = ParsedQuery::parse(&model.query);
+            query.clear_fuzzy_parameters();
+            model.query = query.to_string();
+
+            update_song_list(model, orders);
         }
         Msg::Scroll => {
             let Some((scroll, max_scroll)) = get_scroll() else {
@@ -237,15 +268,49 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     }
 }
 
-pub fn view(model: &Model) -> Vec<Node<Msg>> {
+pub fn view_categories(model: &Model) -> Node<Msg> {
+    let category_card = |category: &Category| -> Node<Msg> {
+        let title = category.title.replace(' ', "");
+        div![
+            C![C.category_item],
+            ev(Ev::Click, move |_| Msg::Search(format!("genre:{title}"))),
+            ev(Ev::Click, |_| Msg::ToggleCategories),
+            div![
+                C![C.category_item_info],
+                div![
+                    C![C.gizmo, C.icon_genre, C.tooltip],
+                    span![C![C.tooltiptext], &category.title],
+                ],
+                div![C![C.category_item_title], &category.title],
+            ],
+        ]
+    };
 
+    div![
+        C![C.category_list],
+        attrs! {At::Id => CATEGORY_LIST_ID},
+        model
+            .songs
+            .iter()
+            .filter(|(_, song)| song.genre.is_some())
+            .map(|(_, song)| Category {
+                title: song.genre.clone().unwrap()
+            })
+            .collect::<BTreeSet<Category>>()
+            .iter()
+            .map(category_card)
+    ]
+}
+
+pub fn view_songs(model: &Model) -> Node<Msg> {
     let song_card = |song: &Song| -> Node<Msg> {
         div![
             C![C.song_item],
             img![
                 C![C.song_item_cover],
                 match song.cover {
-                    Some(_) => attrs! {At::Src => format!("/images/songs/{}.png", song.song_hash)},
+                    Some(_) =>
+                        attrs! {At::Src => format!("/api/images/songs/{}.png", song.song_hash)},
                     None => {
                         // use a DefaultHasher to turn the song_hash string into a number we can
                         // use to give the song a psuedo-random default cover.
@@ -275,20 +340,20 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 C![C.song_gizmos],
                 match &song.genre {
                     Some(genre) => div![
-                        C![C.gizmo, C.note_icon, C.tooltip],
+                        C![C.gizmo, C.icon_genre, C.tooltip],
                         span![C![C.tooltiptext], genre],
                     ],
                     None => empty![],
                 },
                 match &song.language {
                     Some(language) => div![
-                        C![C.gizmo, C.flag_icon, C.tooltip],
+                        C![C.gizmo, C.icon_lang, C.tooltip],
                         span![C![C.tooltiptext], language],
                     ],
                     None => empty![],
                 },
                 IF![song.video.is_some() => div![
-                    C![C.gizmo, C.video_icon, C.tooltip],
+                    C![C.gizmo, C.icon_video, C.tooltip],
                     span![
                         C![C.tooltiptext],
                         "Musikvideo",
@@ -296,7 +361,7 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 ]],
                 match (&song.duet_singer_1, &song.duet_singer_2) {
                     (Some(p1), Some(p2)) => div![
-                        C![C.gizmo, C.duet_icon, C.tooltip],
+                        C![C.gizmo, C.icon_duet, C.tooltip],
                         span![
                             C![C.tooltiptext],
                             "Duet",
@@ -313,6 +378,21 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
         ]
     };
 
+    div![
+        C![C.song_list],
+        attrs! {At::Id => SONG_LIST_ID},
+        ev(Ev::Scroll, |_| Msg::Scroll),
+        model
+            .songs
+            .iter()
+            .map(|(_, song)| song)
+            .map(song_card)
+            .take(model.songs.len() - model.hidden_songs)
+            .take(model.shown_songs),
+    ]
+}
+
+pub fn view(model: &Model) -> Vec<Node<Msg>> {
     vec![
         div![
             C![C.song_search_bar],
@@ -325,44 +405,39 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 },
             ],
             button![
-                C![C.song_sort_button, C.tooltip],
+                C![C.song_sort_button, C.tooltip, C.icon_genre],
+                IF![model.screen == View::Categories => C![C.song_sort_button_selected]],
+                ev(Ev::Click, |_| Msg::ToggleCategories),
+                span![C![C.tooltiptext], "Visa Genrer"],
+            ],
+            button![
+                C![C.song_sort_button, C.tooltip, C.icon_duet],
                 IF![model.filter_duets => C![C.song_sort_button_selected]],
                 ev(Ev::Click, |_| Msg::ToggleDuets),
                 span![C![C.tooltiptext], "Endast Duetter"],
-                "D",
             ],
             button![
-                C![C.song_sort_button, C.tooltip],
+                C![C.song_sort_button, C.tooltip, C.icon_video],
                 IF![model.filter_video => C![C.song_sort_button_selected]],
                 ev(Ev::Click, |_| Msg::ToggleVideo),
                 span![C![C.tooltiptext], "Endast med Video"],
-                "V",
             ],
             button![
-                C![C.song_sort_button, C.song_sort_button_right, C.tooltip],
-                IF![model.filter_video => C![C.song_sort_button_selected]],
+                C![C.song_sort_button, C.song_sort_button_right],
+                C![C.tooltip, C.icon_shuffle],
                 ev(Ev::Click, |_| Msg::Shuffle),
                 span![C![C.tooltiptext], "Blanda låtar"],
-                "🔀",
             ],
         ],
-        div![
-            C![C.song_list],
-            attrs! {At::Id => SONG_LIST_ID},
-            ev(Ev::Scroll, |_| Msg::Scroll),
-            model
-                .songs
-                .iter()
-                .map(|(_, song)| song)
-                .map(song_card)
-                .take(model.songs.len() - model.hidden_songs)
-                .take(model.shown_songs),
-        ],
+        match model.screen {
+            View::Songs => view_songs(model),
+            View::Categories => view_categories(model),
+        },
     ]
 }
 
 async fn fetch_songs() -> Option<Msg> {
-    let mut songs: Vec<Song> = match fetch_list_of("/songs").await {
+    let mut songs: Vec<Song> = match fetch_list_of("/api/songs").await {
         Ok(response) => response,
         Err(e) => {
             error!("Error fetching songs:", e);
@@ -383,6 +458,7 @@ pub fn autotype_song(model: &mut Model, orders: &mut impl Orders<Msg>) {
 }
 
 const SONG_LIST_ID: &str = "song_list";
+const CATEGORY_LIST_ID: &str = "category_list";
 
 fn get_song_list_element() -> Option<Element> {
     document().get_element_by_id(SONG_LIST_ID)

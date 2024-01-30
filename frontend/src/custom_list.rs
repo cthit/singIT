@@ -10,7 +10,7 @@ use crate::{
 pub type CustomLists = HashMap<String, Loading<HashSet<String>>>;
 
 pub async fn fetch_custom_song_list_index() -> Option<Msg> {
-    let custom_lists: Vec<String> = match fetch_list_of("/custom/lists").await {
+    let custom_lists: Vec<String> = match fetch_list_of("api/custom/lists").await {
         Ok(response) => response,
         Err(e) => {
             error!("Failed fetching custom song list index:", e);
@@ -22,7 +22,8 @@ pub async fn fetch_custom_song_list_index() -> Option<Msg> {
 }
 
 pub async fn fetch_custom_song_list(list: String) -> Option<Msg> {
-    let song_hashes: HashSet<String> = match fetch_list_of(format!("/custom/list/{list}")).await {
+    let song_hashes: HashSet<String> = match fetch_list_of(format!("api/custom/list/{list}")).await
+    {
         Ok(response) => response.into_iter().collect(),
         Err(e) => {
             error!("Failed fetching custom song list:", e);
