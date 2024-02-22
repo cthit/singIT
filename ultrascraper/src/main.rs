@@ -2,6 +2,7 @@ use std::{fs::create_dir, os::unix::prelude::OsStrExt, path::PathBuf, sync::Arc,
 
 use clap::{Parser, Subcommand};
 use eyre::{eyre, Context};
+use rust_fuzzy_search::fuzzy_compare;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use tokio::{
@@ -28,6 +29,9 @@ enum Action {
         token: String,
     },
     Admin {
+        output: PathBuf,
+    },
+    Duplicate {
         output: PathBuf,
     },
 }
@@ -98,7 +102,6 @@ async fn main() -> eyre::Result<()> {
                     let s = (song.path.clone(), song.title.clone(), song.artist.clone());
                     no_genre.push(s)
                 }
-                
             }
             let jno_video = serde_json::to_string_pretty(&no_video)
                 .with_context(|| "failed to serialize song list")?;
@@ -116,9 +119,44 @@ async fn main() -> eyre::Result<()> {
                 .await
                 .with_context(|| "failed to write no_cover to file")?;
         }
+        Action::Duplicate { output } => {
+            let mut dup_songs = vec![];
+            for songa in &songs {
+                for songb in &songs {
+                    if songa.fuzzy_song_compare(songb) > 0.97 {
+                        let song = SmallSong {
+                            path: songa.path.clone(),
+                            title: songa.title.clone(),
+                            artist: songa.artist.clone(),
+                        };
+                        dup_songs.push(song);
+                        break;
+                    }
+                }
+            }
+            let dup_jsongs = serde_json::to_string_pretty(&dup_songs)
+                .with_context(|| "failed to serialize duplicate song list")?;
+            fs::write(output, dup_jsongs)
+                .await
+                .with_context(|| "failed to write to file")?;
+        }
     }
 
     Ok(())
+}
+impl Song {
+    fn fuzzy_song_compare(&self, song: &Song) -> f32 {
+        if self.path == song.path {
+            return 0.0;
+        }
+        if let Some(a) = self.title.as_deref() {
+            if let Some(b) = song.title.as_deref() {
+                let score = fuzzy_compare(a, b);
+                return score;
+            }
+        }
+        0.0
+    }
 }
 
 fn explore_dir(path: PathBuf, tx: Arc<mpsc::Sender<Song>>) {
@@ -145,6 +183,13 @@ fn explore_dir(path: PathBuf, tx: Arc<mpsc::Sender<Song>>) {
     }
 
     task::spawn(inner(path, tx));
+}
+
+#[derive(Debug, Default, Serialize, Clone)]
+struct SmallSong {
+    path: PathBuf,
+    title: Option<String>,
+    artist: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Clone)]
