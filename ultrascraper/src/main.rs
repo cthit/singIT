@@ -29,7 +29,7 @@ enum Action {
         token: String,
     },
     Admin {
-        output: PathBuf,
+        
     },
     Duplicate {
         output: PathBuf,
@@ -82,24 +82,24 @@ async fn main() -> eyre::Result<()> {
         Action::Post { .. } => {
             todo!("posting to server")
         }
-        Action::Admin { output } => {
-            fs::write(output, jsongs)
+        Action::Admin {  } => {
+           /* fs::write(output, jsongs)
                 .await
-                .with_context(|| "failed to write to file")?;
+                .with_context(|| "failed to write to file")?; */
             let mut no_video = vec![];
             let mut no_cover = vec![];
             let mut no_genre = vec![];
             for song in songs {
                 if song.cover.is_none() {
-                    let s = (song.path.clone(), song.title.clone(), song.artist.clone());
+                    let s = SmallSong{path: song.path.clone(), title: song.title.clone(),artist: song.artist.clone()};
                     no_cover.push(s)
                 }
                 if song.video.is_none() && song.bg.is_none() {
-                    let s = (song.path.clone(), song.title.clone(), song.artist.clone());
+                    let s = SmallSong{path: song.path.clone(), title: song.title.clone(),artist: song.artist.clone()};
                     no_video.push(s)
                 }
                 if song.genre.is_none() {
-                    let s = (song.path.clone(), song.title.clone(), song.artist.clone());
+                    let s = SmallSong{path: song.path.clone(), title: song.title.clone(),artist: song.artist.clone()};
                     no_genre.push(s)
                 }
             }
@@ -215,8 +215,8 @@ async fn parse_file(path: PathBuf, tx: Arc<mpsc::Sender<Song>>) -> eyre::Result<
 
     let file_name = path.file_name().expect("file has a filename");
     //println!("hashing {file_name:?}");
-
-    let song_hash = md5::compute(file_name.as_bytes());
+    //println!("{:?}", file_name);
+    let song_hash = md5::compute(path.to_string_lossy().as_bytes());
     let song_hash = format!("{song_hash:?}");
 
     let mut song = Song {
