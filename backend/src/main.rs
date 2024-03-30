@@ -214,15 +214,25 @@ async fn gamma_redirect(
     };
 
     let client = reqwest::Client::new();
-    let token_resp: AuthTokenResponse = client
+    let token_resp = client
         .post(&opt.gamma_token_uri)
         .form(&form)
         .send()
         .await
-        .expect("Failed to send token request to gamma")
-        .json()
+        .expect("Failed to send token request to gamma");
+    let status = token_resp.status();
+    let token_resp = token_resp
+        .text()
         .await
-        .expect("Failed to deserialize auth response content");
+        .expect("Failed to get token response body");
+
+    if !status.is_success() {
+        eprintln!("Error getting gamma token: {status}");
+        eprintln!("Body: {token_resp}");
+    }
+
+    let token_resp: AuthTokenResponse =
+        serde_json::from_str(&token_resp).expect("Failed to deserialize auth response content");
 
     session
         .insert(ACCESS_TOKEN_SESSION_KEY, token_resp.access_token)
