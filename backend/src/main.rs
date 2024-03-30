@@ -151,6 +151,7 @@ async fn login_with_gamma(opt: web::Data<Arc<Opt>>, session: Session) -> impl Re
             ("client_id", &opt.gamma_client_id),
             ("redirect_uri", &opt.gamma_redirect_uri),
             ("state", &state),
+            ("scope", "profile openid"),
         ])
         .build()
         .expect("Failed to build auth URI")
@@ -251,9 +252,7 @@ impl FromRequest for User {
             .expect("Failed to retrieve session access token, user not authorized")
             .expect("Failed to deserialize session key, user not authorized");
 
-        ready(Ok(Self {
-            access_token: access_token,
-        }))
+        ready(Ok(Self { access_token }))
     }
 }
 
