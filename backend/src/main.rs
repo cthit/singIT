@@ -20,8 +20,10 @@ use clap::Parser;
 use diesel::{ExpressionMethods, QueryDsl, Queryable, Selectable, SelectableHelper};
 use diesel_async::RunQueryDsl;
 use dotenv::dotenv;
-use log::warn;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use gamma_rust_client::{
+    config::GammaConfig,
+    oauth::{gamma_init_auth, GammaAccessToken, GammaOpenIDUser, GammaState},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbPool;
@@ -134,35 +136,20 @@ async fn custom_list(pool: web::Data<DbPool>, path: web::Path<String>) -> impl R
 const GAMMA_AUTH_STATE_KEY: &str = "GAMMA_AUTH_STATE";
 
 #[get("/login/gamma")]
-async fn login_with_gamma(opt: web::Data<Arc<Opt>>, session: Session) -> impl Responder {
-    // 1. Generate state to use towards gamma
-    // 2. Call gamma with values
-    let state: String = thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(32)
-        .map(char::from)
-        .collect();
-
-    let client = reqwest::Client::new();
-    let auth_resp = client
-        .get(&opt.gamma_auth_uri)
-        .query(&[
-            ("response_type", "code"),
-            ("client_id", &opt.gamma_client_id),
-            ("redirect_uri", &opt.gamma_redirect_uri),
-            ("state", &state),
-            ("scope", "profile openid"),
-        ])
-        .build()
-        .expect("Failed to build auth URI")
-        .url()
-        .to_string();
+async fn login_with_gamma(
+    gamma_config: web::Data<Arc<GammaConfig>>,
+    session: Session,
+) -> impl Responder {
+    let gamma_auth = gamma_init_auth(&gamma_config).expect("Failed to do gamma auth");
 
     session
-        .insert(GAMMA_AUTH_STATE_KEY.to_string(), state)
+        .insert(
+            GAMMA_AUTH_STATE_KEY.to_string(),
+            gamma_auth.state.get_state(),
+        )
         .expect("Failed to set state cookie");
 
-    Redirect::to(auth_resp.to_string()).temporary()
+    Redirect::to(gamma_auth.redirect_to).temporary()
 }
 
 #[derive(Deserialize)]
@@ -171,81 +158,47 @@ struct RedirectParams {
     code: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct AuthTokenRequest {
-    grant_type: String,
-    redirect_uri: String,
-    client_id: String,
-    client_secret: String,
-    code: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct AuthTokenResponse {
-    access_token: String,
-    expires_in: i64,
-    token_type: String,
-}
-
 const ACCESS_TOKEN_SESSION_KEY: &str = "access_token";
 
 #[get("/login/gamma/redirect")]
 async fn gamma_redirect(
-    queries: web::Query<RedirectParams>,
-    opt: web::Data<Arc<Opt>>,
+    params: web::Query<RedirectParams>,
+    gamma_config: web::Data<Arc<GammaConfig>>,
+    //opt: web::Data<Arc<Opt>>,
     session: Session,
 ) -> impl Responder {
-    let expected_state: String = session
+    let state: String = session
         .get(GAMMA_AUTH_STATE_KEY)
         .expect("Failed to read session store")
         .expect("Failed to deserialize gamma auth state key");
-    let received_state = &queries.state;
-    if &expected_state != received_state {
-        warn!("Expected state '{expected_state}', got state '{received_state}'");
-        panic!("State does not match the expected state");
-    }
+    let state = GammaState::get_state_str(state);
 
-    let form = AuthTokenRequest {
-        grant_type: String::from("authorization_code"),
-        redirect_uri: opt.gamma_redirect_uri.clone(),
-        client_id: opt.gamma_client_id.clone(),
-        client_secret: opt.gamma_client_secret.clone(),
-        code: queries.code.clone(),
+    let access_token = state
+        .gamma_callback_params(&gamma_config, &params.state, params.code.clone())
+        .await
+        .expect("Failed to verify gamma redirect");
+
+    let user = access_token
+        .get_current_user(&gamma_config)
+        .await
+        .expect("Failed to get gamma user info");
+
+    let user = User {
+        access_token,
+        info: user,
     };
 
-    let client = reqwest::Client::new();
-    let token_resp = client
-        .post(&opt.gamma_token_uri)
-        .form(&form)
-        .send()
-        .await
-        .expect("Failed to send token request to gamma");
-    let status = token_resp.status();
-    let token_resp = token_resp
-        .text()
-        .await
-        .expect("Failed to get token response body");
-
-    if !status.is_success() {
-        eprintln!("Error getting gamma token: {status}");
-        eprintln!("Body: {token_resp}");
-    }
-
-    let token_resp: AuthTokenResponse =
-        serde_json::from_str(&token_resp).expect("Failed to deserialize auth response content");
-
     session
-        .insert(ACCESS_TOKEN_SESSION_KEY, token_resp.access_token)
+        .insert(ACCESS_TOKEN_SESSION_KEY, user)
         .expect("Failed to insert auth token in session");
 
     Redirect::to("/").temporary()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct User {
-    access_token: String,
-    // TODO: Implement when we support gamma me.
-    // cid: String,
+    access_token: GammaAccessToken,
+    info: GammaOpenIDUser,
 }
 
 impl FromRequest for User {
@@ -257,18 +210,18 @@ impl FromRequest for User {
             .into_inner()
             .expect("Failed to retrieve session");
 
-        let access_token: String = session
+        let user: User = session
             .get(ACCESS_TOKEN_SESSION_KEY)
             .expect("Failed to retrieve session access token, user not authorized")
             .expect("Failed to deserialize session key, user not authorized");
 
-        ready(Ok(Self { access_token }))
+        ready(Ok(user))
     }
 }
 
 #[get("/auth/test")]
 async fn auth_test(user: User) -> impl Responder {
-    String::from("LOGGED IN!")
+    String::from("hello ") + &user.info.cid
 }
 
 #[get("/auth/logout")]
@@ -308,17 +261,13 @@ pub struct Opt {
     #[clap(long, env = "GAMMA_REDIRECT_URI")]
     gamma_redirect_uri: String,
 
-    /// The auth URI for the auth call to gamma.
-    #[clap(long, env = "GAMMA_AUTH_URI")]
-    gamma_auth_uri: String,
+    /// API key for gamma.
+    #[clap(long, env = "GAMMA_API_KEY")]
+    gamma_api_key: String,
 
-    /// The token URI for the token call to gamma.
-    #[clap(long, env = "GAMMA_TOKEN_URI")]
-    gamma_token_uri: String,
-
-    /// The me URI for the 'me' call to gamma.
-    #[clap(long, env = "GAMMA_ME_URI")]
-    gamma_me_uri: String,
+    /// The URI for gamma.
+    #[clap(long, env = "GAMMA_URI")]
+    gamma_uri: String,
 
     /// The secret key to use when encrypting cookies
     #[clap(long, env = "COOKIE_SECRET_KEY")]
@@ -330,6 +279,15 @@ async fn main() -> eyre::Result<()> {
     dotenv().ok();
     let opt = Arc::new(Opt::parse());
     env_logger::init();
+
+    let gamma_config = Arc::new(GammaConfig {
+        gamma_client_secret: opt.gamma_client_secret.clone(),
+        gamma_redirect_uri: opt.gamma_redirect_uri.clone(),
+        gamma_client_id: opt.gamma_client_id.clone(),
+        gamma_api_key: opt.gamma_api_key.clone(),
+        gamma_url: opt.gamma_uri.clone(),
+        scopes: "openid profile".into(),
+    });
 
     let db_pool = db::setup(&opt).await?;
     let app = {
@@ -346,6 +304,7 @@ async fn main() -> eyre::Result<()> {
                 ))
                 .app_data(web::Data::new(db_pool.clone()))
                 .app_data(web::Data::new(Arc::clone(&opt)))
+                .app_data(web::Data::new(Arc::clone(&gamma_config)))
                 .service(root)
                 .service(songs)
                 .service(song_image)
