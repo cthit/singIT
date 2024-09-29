@@ -1,4 +1,5 @@
 mod db;
+mod route;
 mod schema;
 
 use std::{
@@ -7,23 +8,19 @@ use std::{
 };
 
 use actix_files::NamedFile;
-use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
-use actix_utils::future::{ready, Ready};
+use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{
     cookie::Key,
     get,
     middleware::Logger,
-    web::{self, Json, Redirect},
-    App, FromRequest, HttpRequest, HttpServer, Responder,
+    web::{self, Json},
+    App, HttpRequest, HttpServer, Responder,
 };
 use clap::Parser;
-use diesel::{ExpressionMethods, QueryDsl, Queryable, Selectable, SelectableHelper};
+use diesel::{QueryDsl, Queryable, Selectable, SelectableHelper};
 use diesel_async::RunQueryDsl;
 use dotenv::dotenv;
-use gamma_rust_client::{
-    config::GammaConfig,
-    oauth::{gamma_init_auth, GammaAccessToken, GammaOpenIDUser, GammaState},
-};
+use gamma_rust_client::config::GammaConfig;
 use serde::{Deserialize, Serialize};
 
 use crate::db::DbPool;
@@ -97,138 +94,6 @@ async fn songs(pool: web::Data<DbPool>) -> impl Responder {
     let songs = song.select(Song::as_select()).load(&mut db).await.unwrap();
 
     Json(songs)
-}
-
-#[get("/custom/lists")]
-async fn custom_lists(pool: web::Data<DbPool>) -> impl Responder {
-    use schema::custom_list::dsl::*;
-
-    let mut db = pool.get().await.unwrap();
-    let lists: Vec<String> = custom_list.select(name).load(&mut db).await.unwrap();
-
-    Json(lists)
-}
-
-#[get("/custom/list/{list}")]
-async fn custom_list(pool: web::Data<DbPool>, path: web::Path<String>) -> impl Responder {
-    use schema::custom_list::dsl::*;
-    use schema::custom_list_entry::dsl::*;
-
-    let mut db = pool.get().await.unwrap();
-
-    let list: CustomList = custom_list
-        .select(CustomList::as_select())
-        .filter(name.eq(&*path))
-        .get_result(&mut db)
-        .await
-        .unwrap();
-
-    let list_entries: Vec<String> = custom_list_entry
-        .select(song_hash)
-        .filter(list_id.eq(list.id))
-        .load(&mut db)
-        .await
-        .unwrap();
-
-    Json(list_entries)
-}
-
-const GAMMA_AUTH_STATE_KEY: &str = "GAMMA_AUTH_STATE";
-
-#[get("/login/gamma")]
-async fn login_with_gamma(
-    gamma_config: web::Data<Arc<GammaConfig>>,
-    session: Session,
-) -> impl Responder {
-    let gamma_auth = gamma_init_auth(&gamma_config).expect("Failed to do gamma auth");
-
-    session
-        .insert(
-            GAMMA_AUTH_STATE_KEY.to_string(),
-            gamma_auth.state.get_state(),
-        )
-        .expect("Failed to set state cookie");
-
-    Redirect::to(gamma_auth.redirect_to).temporary()
-}
-
-#[derive(Deserialize)]
-struct RedirectParams {
-    state: String,
-    code: String,
-}
-
-const ACCESS_TOKEN_SESSION_KEY: &str = "access_token";
-
-#[get("/login/gamma/redirect")]
-async fn gamma_redirect(
-    params: web::Query<RedirectParams>,
-    gamma_config: web::Data<Arc<GammaConfig>>,
-    //opt: web::Data<Arc<Opt>>,
-    session: Session,
-) -> impl Responder {
-    let state: String = session
-        .get(GAMMA_AUTH_STATE_KEY)
-        .expect("Failed to read session store")
-        .expect("Failed to deserialize gamma auth state key");
-    let state = GammaState::get_state_str(state);
-
-    let access_token = state
-        .gamma_callback_params(&gamma_config, &params.state, params.code.clone())
-        .await
-        .expect("Failed to verify gamma redirect");
-
-    let user = access_token
-        .get_current_user(&gamma_config)
-        .await
-        .expect("Failed to get gamma user info");
-
-    let user = User {
-        access_token,
-        info: user,
-    };
-
-    session
-        .insert(ACCESS_TOKEN_SESSION_KEY, user)
-        .expect("Failed to insert auth token in session");
-
-    Redirect::to("/").temporary()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct User {
-    access_token: GammaAccessToken,
-    info: GammaOpenIDUser,
-}
-
-impl FromRequest for User {
-    type Error = actix_web::error::Error;
-    type Future = Ready<Result<Self, Self::Error>>;
-
-    fn from_request(req: &HttpRequest, payload: &mut actix_web::dev::Payload) -> Self::Future {
-        let session = Session::from_request(req, payload)
-            .into_inner()
-            .expect("Failed to retrieve session");
-
-        let user: User = session
-            .get(ACCESS_TOKEN_SESSION_KEY)
-            .expect("Failed to retrieve session access token, user not authorized")
-            .expect("Failed to deserialize session key, user not authorized");
-
-        ready(Ok(user))
-    }
-}
-
-#[get("/auth/test")]
-async fn auth_test(user: User) -> impl Responder {
-    String::from("hello ") + &user.info.cid
-}
-
-#[get("/auth/logout")]
-async fn logout(session: Session) -> impl Responder {
-    session.clear();
-
-    Redirect::to("/").temporary()
 }
 
 #[derive(Parser)]
@@ -308,12 +173,14 @@ async fn main() -> eyre::Result<()> {
                 .service(root)
                 .service(songs)
                 .service(song_image)
-                .service(custom_list)
-                .service(custom_lists)
-                .service(login_with_gamma)
-                .service(gamma_redirect)
-                .service(auth_test)
-                .service(logout)
+                .service(route::custom_list::list_all)
+                .service(route::custom_list::get_list)
+                .service(route::custom_list::insert_entry)
+                .service(route::custom_list::remove_entry)
+                .service(route::auth::user_info)
+                .service(route::auth::login_with_gamma)
+                .service(route::auth::gamma_redirect)
+                .service(route::auth::logout)
                 .route("/{filename:.*}", web::get().to(index))
         }
     };

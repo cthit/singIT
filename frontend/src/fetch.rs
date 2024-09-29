@@ -4,7 +4,7 @@ use gloo_net::http::{Request, Response};
 use serde::de::DeserializeOwned;
 use wasm_bindgen::{JsError, JsValue};
 
-const HTTP_ACCEPT: &str = concat!("text/csv, ", "application/json;q=0.9");
+const HTTP_ACCEPT: &str = "text/csv, application/json;q=0.9";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FetchError {
