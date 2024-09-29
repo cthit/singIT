@@ -2245,6 +2245,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "singit_lib"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "singit_srv"
 version = "1.0.2"
 dependencies = [
@@ -2264,6 +2271,7 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
+ "singit_lib",
 ]
 
 [[package]]
@@ -2278,6 +2286,7 @@ dependencies = [
  "seed",
  "serde",
  "serde_json",
+ "singit_lib",
  "thiserror",
  "wasm-bindgen",
 ]

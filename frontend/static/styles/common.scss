@@ -19,7 +19,7 @@ body {
 	background-color: #0c2738;
 	color: #ffffff;
 	height: 100%;
-	font-family: Ubuntu,serif;
+	font-family: Ubuntu, serif;
 }
 
 body::after {
@@ -44,7 +44,7 @@ body::after {
 .song_list {
 	overflow: auto;
 	position: absolute;
-	top: 6em;
+	top: 7em;
 	bottom: 0;
 	left: 1em;
 	right: 1em;
@@ -64,7 +64,6 @@ body::after {
 	max-width: 38em;
 	width: 95%;
 	margin: auto;
-	margin-top: 1em;
 	display: flex;
 	flex-direction: row;
 }
@@ -73,7 +72,7 @@ body::after {
 	border: none;
 	border-radius: .3em;
 	padding: .7em 1em;
-	width: calc(100% - 14em);
+	width: calc(100% - 12em);
 	color: #0c2738;
 	margin: 0;
 	float: left;
@@ -139,7 +138,7 @@ body::after {
 	max-width: 40em;
 	margin: auto;
 	margin-bottom: 1em;
-	animation: song_item_enter 1s 1;
+	animation: fade_in 1s 1;
 	box-shadow: #09babe 1px 1px;
 }
 
@@ -156,7 +155,7 @@ body::after {
 	max-width: 40em;
 	margin: auto;
 	margin-bottom: 1em;
-	animation: song_item_enter 1s 1;
+	animation: fade_in 1s 1;
 	box-shadow: #09babe 1px 1px;
 }
 
@@ -180,16 +179,13 @@ body::after {
 	margin: 0;
 }
 
-@keyframes song_item_enter {
+@keyframes fade_in {
 	from {
 		opacity: 0;
-		/*margin-left: -16em;
-		margin-right: 16em;*/
 	}
-	to   {
+
+	to {
 		opacity: 1;
-		/*margin-left: 0;
-		margin-right: 0;*/
 	}
 }
 
@@ -274,6 +270,33 @@ body::after {
 	background-image: url("/images/shuffle.svg");
 }
 
+.icon_add {
+	background-image: url("/images/add.svg");
+}
+
+.icon_remove {
+	background-image: url("/images/remove.svg");
+}
+
+.user_button {
+	background-color: #5598be;
+	/*	border: #09babe solid 2px;*/
+	color: white;
+	border-radius: 5px;
+	padding: 5px;
+	margin: 5px;
+
+}
+
+.user_bar {
+	animation: fade_in 1s;
+	padding: 0.2em;
+	margin: 0.2em;
+	margin-bottom: 1.0em;
+	display: flex;
+	flex-direction: row-reverse;
+}
+
 .hidden {
 	visibility: hidden;
 }
@@ -304,7 +327,7 @@ body::after {
 
 .play_queue_head {
 	padding: 1em;
-	padding-top:0.4em;
+	padding-top: 0.4em;
 	border-bottom: solid 0.2em;
 	border-color: #fff;
 	border-top-left-radius: 1em;
@@ -334,15 +357,21 @@ body::after {
 }
 
 @keyframes spin {
-	0% { transform: rotate(0deg); }
-	100% { transform: rotate(360deg); }
+	0% {
+		transform: rotate(0deg);
+	}
+
+	100% {
+		transform: rotate(360deg);
+	}
 }
 
- /* Tooltip container */
- .tooltip {
+/* Tooltip container */
+.tooltip {
 	position: relative;
 	display: inline-block;
-	border-bottom: 1px dotted black; /* If you want dots under the hoverable text */
+	border-bottom: 1px dotted black;
+	/* If you want dots under the hoverable text */
 }
 
 /* Tooltip text */

@@ -1,17 +1,22 @@
 use crate::category::Category;
 use crate::css::C;
-use crate::custom_list::{fetch_custom_song_list, fetch_custom_song_list_index, CustomLists};
-use crate::fetch::fetch_list_of;
+use crate::custom_list::{
+    add_song_to_list, fetch_custom_song_list, fetch_custom_song_list_index, remove_song_from_list,
+    CustomLists,
+};
+use crate::fetch::{fetch_list_of, FetchError};
 use crate::fuzzy::FuzzyScore;
 use crate::query::ParsedQuery;
 use crate::song::Song;
 use gloo_console::error;
+use gloo_net::http::Request;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use seed::app::cmds::timeout;
 use seed::browser::util::document;
 use seed::{a, prelude::*};
 use seed::{attrs, button, div, empty, img, input, p, span, C, IF};
+use serde::Deserialize;
 use std::cmp::Reverse;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeSet, HashSet};
@@ -20,6 +25,9 @@ use web_sys::Element;
 
 pub struct Model {
     songs: Vec<(Reverse<FuzzyScore>, Song)>,
+
+    /// If logged in, this contains info about the user.
+    user_info: Loading<Option<UserInfo>>,
 
     /// Custom song lists, lazily loaded.
     custom_lists: CustomLists,
@@ -51,6 +59,12 @@ pub struct Model {
     default_song_covers: Vec<&'static str>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UserInfo {
+    pub cid: String,
+    pub nick: String,
+}
+
 #[derive(Default, PartialEq)]
 enum View {
     /// The main song list.
@@ -78,13 +92,16 @@ const SCROLL_THRESHOLD: usize = 50;
 const INITIAL_ELEM_COUNT: usize = 100;
 
 pub enum Msg {
-    /// Loaded songs.
+    /// Fetched songs.
     Songs(Vec<Song>),
 
-    /// Loaded custom song index.
+    /// Fetched user info.
+    UserInfo(Option<UserInfo>),
+
+    /// Fetched custom song index.
     CustomSongLists(Vec<String>),
 
-    /// Loaded custom song list.
+    /// Fetched custom song list.
     CustomSongList {
         list: String,
         song_hashes: HashSet<String>,
@@ -92,6 +109,15 @@ pub enum Msg {
 
     /// The user entered something into the search field
     Search(String),
+
+    /// The user wants to show their custom list
+    ShowUserList,
+
+    /// The user wants to add a song hash to their list
+    AddToList(String),
+
+    /// The user wants to remove a song hash from their list
+    RemoveFromList(String),
 
     /// The user pressed the Toggle Video button
     ToggleVideo,
@@ -114,6 +140,7 @@ pub enum Msg {
 
 pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
     orders.perform_cmd(fetch_songs());
+    orders.perform_cmd(fetch_user_info());
     orders.perform_cmd(fetch_custom_song_list_index());
 
     // get list of default song covers. see build.rs
@@ -123,6 +150,7 @@ pub fn init(_url: Url, orders: &mut impl Orders<Msg>) -> Model {
     Model {
         screen: Default::default(),
         songs: vec![],
+        user_info: Loading::InProgress,
         custom_lists: Default::default(),
         query: String::new(),
         hidden_songs: 0,
@@ -184,6 +212,18 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 .map(|song| (Default::default(), song))
                 .collect();
         }
+        Msg::UserInfo(user_info) => {
+            if let Some(user_info) = &user_info {
+                if let l @ Loading::NotLoaded =
+                    model.custom_lists.entry(user_info.cid.clone()).or_default()
+                {
+                    orders.perform_cmd(fetch_custom_song_list(user_info.cid.clone()));
+                    *l = Loading::InProgress;
+                }
+            }
+
+            model.user_info = Loading::Loaded(user_info);
+        }
         Msg::CustomSongLists(lists) => {
             model.custom_lists = lists
                 .into_iter()
@@ -203,6 +243,22 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::Search(query) => {
             model.query = query;
             update_song_list(model, orders);
+        }
+        Msg::ShowUserList => {
+            if let Some(user) = model.user_info.get_option() {
+                model.query = format!("list:{}", user.cid);
+                update_song_list(model, orders);
+            };
+        }
+        Msg::AddToList(song_hash) => {
+            if let Some(user) = model.user_info.get_option() {
+                orders.perform_cmd(add_song_to_list(user.cid.clone(), song_hash));
+            }
+        }
+        Msg::RemoveFromList(song_hash) => {
+            if let Some(user) = model.user_info.get_option() {
+                orders.perform_cmd(remove_song_from_list(user.cid.clone(), song_hash));
+            }
         }
         Msg::ToggleVideo => {
             let mut query = ParsedQuery::parse(&model.query);
@@ -303,6 +359,12 @@ pub fn view_categories(model: &Model) -> Node<Msg> {
 }
 
 pub fn view_songs(model: &Model) -> Node<Msg> {
+    let user = model.user_info.get_option();
+    let empty_list = HashSet::new();
+    let user_list = user
+        .and_then(|user| model.custom_lists.get(&user.cid)?.get())
+        .unwrap_or(&empty_list);
+
     let song_card = |song: &Song| -> Node<Msg> {
         div![
             C![C.song_item],
@@ -337,6 +399,27 @@ pub fn view_songs(model: &Model) -> Node<Msg> {
             ],
             div![
                 C![C.song_gizmos],
+                if user.is_none() {
+                    empty![]
+                } else if user_list.contains(&song.song_hash) {
+                    div![
+                        C![C.gizmo, C.icon_remove, C.tooltip],
+                        span![C![C.tooltiptext], "Ta bort från min lista"],
+                        {
+                            let song_hash = song.song_hash.clone();
+                            ev(Ev::Click, |_| Msg::RemoveFromList(song_hash))
+                        },
+                    ]
+                } else {
+                    div![
+                        C![C.gizmo, C.icon_add, C.tooltip],
+                        span![C![C.tooltiptext], "Spara i min lista"],
+                        {
+                            let song_hash = song.song_hash.clone();
+                            ev(Ev::Click, |_| Msg::AddToList(song_hash))
+                        },
+                    ]
+                },
                 match &song.genre {
                     Some(genre) => div![
                         C![C.gizmo, C.icon_genre, C.tooltip],
@@ -393,11 +476,37 @@ pub fn view_songs(model: &Model) -> Node<Msg> {
 
 pub fn view(model: &Model) -> Vec<Node<Msg>> {
     vec![
-        a![
-            attrs! {
-                At::Href => "/login/gamma"
+        div![
+            C![C.user_bar],
+            match &model.user_info {
+                Loading::NotLoaded | Loading::InProgress => {
+                    span![attrs! { At::Style => "visibility: hidden" }, "."]
+                }
+                Loading::Loaded(None) => span![a![
+                    C![C.user_button],
+                    attrs! { At::Href => "/login/gamma" },
+                    "Logga in",
+                ]],
+                Loading::Loaded(Some(user)) => {
+                    span![
+                        "Hej ",
+                        &user.nick,
+                        " :* ",
+                        a![
+                            C![C.user_button],
+                            attrs! { At::Href => "javascript:;"},
+                            ev(Ev::Click, |_| Msg::ShowUserList),
+                            "Min lista"
+                        ],
+                        " ",
+                        a![
+                            C![C.user_button],
+                            attrs! { At::Href => "/logout"},
+                            "Logga ut"
+                        ],
+                    ]
+                }
             },
-            "Login with Gamma"
         ],
         div![
             C![C.song_search_bar],
@@ -455,6 +564,32 @@ async fn fetch_songs() -> Option<Msg> {
     Some(Msg::Songs(songs))
 }
 
+async fn fetch_user_info() -> Option<Msg> {
+    let result = async {
+        let response = Request::get("/me")
+            .header("accept", "application/json")
+            .send()
+            .await?;
+
+        if !response.ok() && response.status() != 401 {
+            return Err(FetchError::Status {
+                code: response.status(),
+                text: response.status_text(),
+            });
+        }
+
+        response.json().await.map_err(FetchError::from)
+    };
+
+    match result.await {
+        Ok(user_info) => Some(Msg::UserInfo(user_info)),
+        Err(e) => {
+            error!("Error fetching user info:", e);
+            None
+        }
+    }
+}
+
 pub fn autotype_song(model: &mut Model, orders: &mut impl Orders<Msg>) {
     let (_, song) = &model.songs[0];
     model.query_placeholder = ParsedQuery::random(song, &mut thread_rng()).to_string();
@@ -481,4 +616,24 @@ fn get_scroll() -> Option<(i32, i32)> {
     let height = list.client_height();
     let max = (list.scroll_height() - height).max(0);
     Some((scroll, max))
+}
+
+impl<T> Loading<T> {
+    pub fn get(&self) -> Option<&T> {
+        match self {
+            Loading::NotLoaded => None,
+            Loading::InProgress => None,
+            Loading::Loaded(t) => Some(t),
+        }
+    }
+}
+
+impl<T> Loading<Option<T>> {
+    pub fn get_option(&self) -> Option<&T> {
+        match self {
+            Loading::NotLoaded => None,
+            Loading::InProgress => None,
+            Loading::Loaded(t) => t.as_ref(),
+        }
+    }
 }
