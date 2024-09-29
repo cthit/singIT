@@ -1,15 +1,20 @@
 ##################
 ### BASE STAGE ###
 ##################
-FROM rust:1.72.1 as base
+FROM rust:1.80.1 as base
 
 # Install build dependencies
-RUN cargo install --locked trunk strip_cargo_version
 RUN rustup target add wasm32-unknown-unknown
 RUN rustup target add x86_64-unknown-linux-musl
+RUN cargo install --locked --version 0.0.3  strip_cargo_version
+RUN cargo install --locked --version 0.18.7 trunk
+RUN apt-get update &&\
+    apt-get install -y musl-tools &&\
+    apt-get clean &&\
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-RUN mkdir frontend backend common
+RUN mkdir frontend backend lib
 
 ###########################
 ### STRIP-VERSION STAGE ###
@@ -19,7 +24,7 @@ FROM base AS strip-version
 COPY Cargo.lock Cargo.toml ./
 COPY frontend/Cargo.toml ./frontend/
 COPY backend/Cargo.toml ./backend/
-#COPY common/Cargo.toml ./common/
+COPY lib/Cargo.toml ./lib/
 RUN strip_cargo_version
 
 ###################
@@ -29,11 +34,11 @@ FROM base AS build
 
 RUN cargo init --lib frontend
 RUN cargo init --bin backend
-RUN cargo init --lib common
+RUN cargo init --lib lib
 
-COPY --from=strip-version /app/frontend/Cargo.toml /app/frontend/
-COPY --from=strip-version /app/backend/Cargo.toml /app/backend/
-#COPY --from=strip-version /app/common/Cargo.toml /app/common/
+COPY --from=strip-version /app/frontend/Cargo.toml        /app/frontend/
+COPY --from=strip-version /app/backend/Cargo.toml         /app/backend/
+COPY --from=strip-version /app/lib/Cargo.toml             /app/lib/
 COPY --from=strip-version /app/Cargo.toml /app/Cargo.lock /app/
 
 WORKDIR /app/backend
