@@ -22,7 +22,7 @@ docker run --name "postgres" -d --publish 5432:5432 \
 # Configure environment variables:
 cp ./backend/.env.example ./backend/.env; $EDITOR ./backend/.env
 
-# In a dedicated terimnal: build frontend:
+# In a dedicated terminal: build frontend:
 cd ./frontend; trunk watch
 
 # In a dedicated terminal: configure database and run backend:
