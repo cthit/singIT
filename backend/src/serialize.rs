@@ -7,6 +7,7 @@ use actix_web::{
 use reqwest::StatusCode;
 use serde::Serialize;
 
+/// Responder for serializing a list using a client-specified format, e.g. csv or json.
 pub struct Ser<T: Serialize>(pub Vec<T>);
 
 impl<T: Serialize> Responder for Ser<T> {
