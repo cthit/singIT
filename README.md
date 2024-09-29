@@ -20,7 +20,7 @@ docker run --name "postgres" -d --publish 5432:5432 \
   --env POSTGRES_PASSWORD=password --env POSTGRES_USER=postgres postgres:16
 
 # Configure environment variables:
-cp ./backend/.env.example ./backend/.env; $EDITOR ./backend/.env
+cp ./backend/example.env ./backend/.env; $EDITOR ./backend/.env
 
 # In a dedicated terminal: build frontend:
 cd ./frontend; trunk watch
