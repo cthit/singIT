@@ -1,6 +1,7 @@
 mod db;
 mod route;
 mod schema;
+mod serialize;
 
 use std::{
     path::{Path, PathBuf},
@@ -13,7 +14,7 @@ use actix_web::{
     cookie::Key,
     get,
     middleware::Logger,
-    web::{self, Json},
+    web::{self},
     App, HttpRequest, HttpServer, Responder,
 };
 use clap::Parser;
@@ -22,6 +23,7 @@ use diesel_async::RunQueryDsl;
 use dotenv::dotenv;
 use gamma_rust_client::config::GammaConfig;
 use serde::{Deserialize, Serialize};
+use serialize::Ser;
 
 use crate::db::DbPool;
 
@@ -93,7 +95,7 @@ async fn songs(pool: web::Data<DbPool>) -> impl Responder {
     let mut db = pool.get().await.unwrap();
     let songs = song.select(Song::as_select()).load(&mut db).await.unwrap();
 
-    Json(songs)
+    Ser(songs)
 }
 
 #[derive(Parser)]
