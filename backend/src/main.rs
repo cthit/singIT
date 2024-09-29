@@ -1,4 +1,5 @@
 mod db;
+mod error;
 mod route;
 mod schema;
 mod serialize;
@@ -15,17 +16,19 @@ use actix_web::{
     get,
     middleware::Logger,
     web::{self},
-    App, HttpRequest, HttpServer, Responder,
+    App, HttpRequest, HttpServer,
 };
 use clap::Parser;
 use diesel::{QueryDsl, Queryable, Selectable, SelectableHelper};
 use diesel_async::RunQueryDsl;
 use dotenv::dotenv;
+use eyre::Context;
 use gamma_rust_client::config::GammaConfig;
 use serde::{Deserialize, Serialize};
 use serialize::Ser;
 
 use crate::db::DbPool;
+use crate::error::Result;
 
 #[derive(
     Serialize,
@@ -73,7 +76,7 @@ async fn root() -> actix_web::Result<NamedFile> {
 }
 
 async fn index(req: HttpRequest) -> actix_web::Result<NamedFile> {
-    let path: PathBuf = req.match_info().query("filename").parse().unwrap();
+    let path: PathBuf = req.match_info().query("filename").parse()?;
     let path = Path::new("dist").join(path);
     Ok(NamedFile::open(path)?)
 }
@@ -89,13 +92,18 @@ async fn song_image(
 }
 
 #[get("/songs")]
-async fn songs(pool: web::Data<DbPool>) -> impl Responder {
+async fn songs(pool: web::Data<DbPool>) -> Result<Ser<Song>> {
     use schema::song::dsl::*;
 
-    let mut db = pool.get().await.unwrap();
-    let songs = song.select(Song::as_select()).load(&mut db).await.unwrap();
+    let mut db = pool.get().await?;
 
-    Ser(songs)
+    let songs = song
+        .select(Song::as_select())
+        .load(&mut db)
+        .await
+        .wrap_err("Failed to query db for songs")?;
+
+    Ok(Ser(songs))
 }
 
 #[derive(Parser)]
