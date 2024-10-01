@@ -1,10 +1,10 @@
 use actix_web::{
     body::EitherBody,
     http::header::{Accept, Header},
+    http::StatusCode,
     web::Json,
     HttpResponseBuilder, Responder,
 };
-use reqwest::StatusCode;
 use serde::Serialize;
 
 /// Responder for serializing a list using a client-specified format, e.g. csv or json.
