@@ -6,10 +6,10 @@ edition = "2021"
 
 [dependencies]
 singit_lib = { path = "../lib" }
-actix-files = "0.6.2"
-actix-session = { version = "0.8.0", features = ["cookie-session"] }
+actix-files = "0.6.6"
+actix-session = { version = "0.10.1", features = ["cookie-session"] }
 actix-utils = "3.0.1"
-actix-web = { version = "4.4.0", default-features = false, features = ["macros"] }
+actix-web = { version = "4.9.0", default-features = false, features = ["macros"] }
 clap = { version = "4.4.4", features = ["derive", "env"] }
 diesel = "2.1.1"
 diesel-async = { version = "0.4.1", features = ["postgres", "deadpool"] }
@@ -18,7 +18,7 @@ env_logger = "0.10.0"
 eyre = "0.6.8"
 log = "0.4.20"
 rand = "0.8.5"
-reqwest = { version = "0.11.22", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12.7", default-features = false, features = ["rustls-tls", "json"] }
 serde = { version = "1.0.188", default-features = false, features = ["derive", "std"] }
 serde_json = "1.0.115"
 gamma_rust_client = { git = "https://github.com/hulthe/Delta.git", rev = "ce5b41aa248701a7fef8907acf736690928813ff" }

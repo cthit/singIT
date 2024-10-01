@@ -5,6 +5,7 @@ use actix_utils::future::{ready, Ready};
 use actix_web::{
     error, get,
     web::{self, Json, Redirect},
+    http::StatusCode,
     FromRequest, HttpRequest, Responder,
 };
 use eyre::eyre;
@@ -12,7 +13,6 @@ use gamma_rust_client::{
     config::GammaConfig,
     oauth::{gamma_init_auth, GammaAccessToken, GammaOpenIDUser, GammaState},
 };
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use singit_lib::UserInfo;
 

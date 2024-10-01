@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use actix_web::ResponseError;
+use actix_web::{http::StatusCode, ResponseError};
 use diesel_async::pooled_connection::deadpool::PoolError;
 
 pub type Result<R> = core::result::Result<R, Error>;
@@ -35,8 +35,8 @@ impl Display for Error {
 }
 
 impl ResponseError for Error {
-    fn status_code(&self) -> reqwest::StatusCode {
-        reqwest::StatusCode::INTERNAL_SERVER_ERROR
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
     }
 
     fn error_response(&self) -> actix_web::HttpResponse<actix_web::body::BoxBody> {

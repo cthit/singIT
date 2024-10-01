@@ -1,10 +1,9 @@
 use actix_web::web::Json;
-use actix_web::{delete, dev::Response, get, put, web, Responder};
+use actix_web::{delete, dev::Response, get, put, web, Responder, http::StatusCode};
 use diesel::ExpressionMethods;
 use diesel::{QueryDsl, SelectableHelper};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use eyre::{eyre, Context};
-use reqwest::StatusCode;
 
 use crate::{db::DbPool, error::Result, route::auth::User, schema, CustomList};
 
