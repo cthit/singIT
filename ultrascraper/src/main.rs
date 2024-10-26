@@ -29,7 +29,7 @@ enum Action {
         token: String,
     },
     Admin {},
-    Duplicate {
+    Duplicates {
         output: PathBuf,
     },
 }
@@ -160,7 +160,7 @@ async fn main() -> eyre::Result<()> {
                 .await
                 .with_context(|| "failed to write no_cover to file")?;
         }
-        Action::Duplicate { output } => {
+        Action::Duplicates { output } => {
             let mut dup_songs = vec![];
             for songa in &songs {
                 for songb in &songs {
@@ -176,7 +176,7 @@ async fn main() -> eyre::Result<()> {
                 }
             }
             let dup_jsongs = serde_json::to_string_pretty(&dup_songs)
-                .with_context(|| "failed to serialize duplicate song list")?;
+                .with_context(|| "failed to serialize list of duplicate songs")?;
             fs::write(output, dup_jsongs)
                 .await
                 .with_context(|| "failed to write to file")?;
