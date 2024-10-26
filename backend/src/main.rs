@@ -4,14 +4,208 @@ use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{
     cookie::Key,
     middleware::Logger,
+<<<<<<< HEAD
     web::{self},
     App, HttpServer,
 };
 use clap::Parser;
+=======
+    put,
+    web::{self, Json},
+    App, HttpRequest, HttpServer, Responder, Result,
+};
+use clap::Parser;
+use diesel::{
+    prelude::Insertable, upsert::excluded, ExpressionMethods, QueryDsl, Queryable, Selectable,
+    SelectableHelper,
+};
+use diesel_async::RunQueryDsl;
+>>>>>>> ee0176f (database request stuffs iirc)
 use dotenv::dotenv;
 use gamma_rust_client::config::GammaConfig;
 
+<<<<<<< HEAD
 use singit_srv::{db, index, root, route, song_image, songs, Opt};
+=======
+use crate::db::DbPool;
+
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Queryable,
+    Selectable,
+    Insertable,
+)]
+#[diesel(table_name = crate::schema::song)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Song {
+    pub song_hash: String,
+    pub title: String,
+    pub artist: String,
+    pub cover: Option<String>,
+    pub language: Option<String>,
+    pub video: Option<String>,
+    pub year: Option<String>,
+    pub genre: Option<String>,
+    pub bpm: String,
+    #[serde(rename = "duetsingerp1")]
+    pub duet_singer_1: Option<String>,
+    #[serde(rename = "duetsingerp2")]
+    pub duet_singer_2: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Queryable, Selectable, Debug, Clone, Default)]
+#[diesel(table_name = crate::schema::custom_list)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct CustomList {
+    id: i32,
+    name: String,
+}
+
+#[get("/")]
+async fn root() -> actix_web::Result<NamedFile> {
+    let path: &Path = "dist/index.html".as_ref();
+    Ok(NamedFile::open(path)?)
+}
+
+async fn index(req: HttpRequest) -> actix_web::Result<NamedFile> {
+    let path: PathBuf = req.match_info().query("filename").parse().unwrap();
+    let path = Path::new("dist").join(path);
+    Ok(NamedFile::open(path)?)
+}
+
+#[get("/images/songs/{image}")]
+async fn song_image(
+    path: web::Path<String>,
+    opt: web::Data<Arc<Opt>>,
+) -> actix_web::Result<NamedFile> {
+    let image = path.into_inner();
+    let path = opt.covers_dir.join(image);
+    Ok(NamedFile::open(path)?)
+}
+
+#[get("/songs")]
+async fn songs(pool: web::Data<DbPool>) -> impl Responder {
+    use schema::song::dsl::*;
+
+    let mut db = pool.get().await.unwrap();
+    let songs = song.select(Song::as_select()).load(&mut db).await.unwrap();
+
+    Json(songs)
+}
+
+#[get("/custom/lists")]
+async fn custom_lists(pool: web::Data<DbPool>) -> impl Responder {
+    use schema::custom_list::dsl::*;
+
+    let mut db = pool.get().await.unwrap();
+    let lists: Vec<String> = custom_list.select(name).load(&mut db).await.unwrap();
+
+    Json(lists)
+}
+
+#[get("/custom/list/{list}")]
+async fn custom_list(pool: web::Data<DbPool>, path: web::Path<String>) -> impl Responder {
+    use schema::custom_list::dsl::*;
+    use schema::custom_list_entry::dsl::*;
+
+    let mut db = pool.get().await.unwrap();
+
+    let list: CustomList = custom_list
+        .select(CustomList::as_select())
+        .filter(name.eq(&*path))
+        .get_result(&mut db)
+        .await
+        .unwrap();
+
+    let list_entries: Vec<String> = custom_list_entry
+        .select(song_hash)
+        .filter(list_id.eq(list.id))
+        .load(&mut db)
+        .await
+        .unwrap();
+
+    Json(list_entries)
+}
+
+#[put("/songs")]
+async fn post_songs(pool: web::Data<DbPool>, new_songs: web::Json<Vec<Song>>) -> Result<String> {
+    use schema::song::dsl::*;
+    let mut db = pool.get().await.unwrap();
+
+    // Get list of existing songs
+    let old_songs = song.select(Song::as_select()).load(&mut db).await.unwrap();
+    // Delete songs which do not appear in songies
+    let mut to_delete = vec![];
+    let new_songs = new_songs.into_inner();
+    for old in old_songs {
+        let mut delete = true;
+        for new in &new_songs {
+            if old.song_hash == *new.song_hash {
+                delete = false;
+                break;
+            }
+        }
+        if delete {
+            to_delete.push(old.song_hash)
+        }
+    }
+
+    diesel::delete(song.filter(song_hash.eq_any(to_delete)))
+        .execute(&mut db)
+        .await
+        .expect("failed to delete removed songs");
+    // Upsert remaining songs into the table
+
+    // Do everything above in transaction
+
+    //let noeuht = diesel::delete(song).execute(&mut db).await.expect("Error deleting old songs");
+    diesel::insert_into(song)
+        .values(new_songs)
+        .on_conflict(song_hash)
+        .do_update()
+        .set((
+            artist.eq(excluded(artist)),
+            title.eq(excluded(title)),
+            language.eq(excluded(language)),
+            genre.eq(excluded(genre)),
+            year.eq(excluded(year)),
+            cover.eq(excluded(cover)),
+            song_hash.eq(excluded(song_hash)),
+            video.eq(excluded(video)),
+            bpm.eq(excluded(bpm)),
+        ))
+        .execute(&mut db)
+        .await
+        .expect("Failed adding new songs");
+    Ok("hello".into())
+}
+#[derive(Parser)]
+pub struct Opt {
+    /// Address to bind to.
+    #[clap(short, long, env = "BIND_ADDRESS", default_value = "0.0.0.0")]
+    address: String,
+
+    /// Port to bind to.
+    #[clap(short, long, env = "BIND_PORT", default_value = "8080")]
+    port: u16,
+
+    /// Postgresql URL.
+    #[clap(short, long, env = "DATABASE_URL")]
+    database_url: String,
+
+    /// Directory where song covers are stored.
+    #[clap(short, long, env = "COVERS_DIR")]
+    covers_dir: PathBuf,
+}
+>>>>>>> ee0176f (database request stuffs iirc)
 
 #[actix_web::main]
 async fn main() -> eyre::Result<()> {
