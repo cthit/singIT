@@ -1,9 +1,9 @@
-use std::{fs::create_dir, os::unix::prelude::OsStrExt, path::PathBuf, sync::Arc, vec};
+use std::{fs::create_dir, path::PathBuf, sync::Arc, vec};
 
 use clap::{Parser, Subcommand};
-use eyre::{eyre, Context};
+use eyre::{eyre, WrapErr};
 use rust_fuzzy_search::fuzzy_compare;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json;
 use tokio::{
     fs::{self, File},
@@ -28,9 +28,7 @@ enum Action {
         #[clap(short, long)]
         token: String,
     },
-    Admin {
-        
-    },
+    Admin {},
     Duplicate {
         output: PathBuf,
     },
@@ -79,27 +77,70 @@ async fn main() -> eyre::Result<()> {
                 }
             }
         }
-        Action::Post { .. } => {
-            todo!("posting to server")
+        Action::Post { server, token } => {
+            let client = reqwest::Client::new();
+            let res = client
+                .put(format!("{server}/songs?token={token}"))
+                .json(&jsongs)
+                .send()
+                .await?;
+            if let Err(e) = res.error_for_status() {
+                println!("Error puting song-json, {e:?}")
+            }
+            for song in &songs {
+                if let Some(cover) = &song.cover {
+                    let mut cover_from = song.path.clone();
+                    cover_from.pop();
+                    cover_from = cover_from.join(cover);
+                    //let cover_to = output.join(&song.song_hash);
+                    if cover_from.is_file() {
+                        let img = tokio::fs::File::open(&cover_from)
+                            .await
+                            .wrap_err(eyre!("Failed to open {:?}", cover_from))?;
+                        let img_res = client
+                            .post(format!("{server}?token={token}"))
+                            .body(img)
+                            .send()
+                            .await?;
+                        if let Err(e) = img_res.error_for_status() {
+                            println!("Error sending image {cover_from:?}, {e:?}")
+                        }
+                    } else {
+                        println!("invalid cover {cover_from:?}, song: {:?}", song.title)
+                    }
+                }
+            }
         }
-        Action::Admin {  } => {
-           /* fs::write(output, jsongs)
-                .await
-                .with_context(|| "failed to write to file")?; */
+        Action::Admin {} => {
+            /* fs::write(output, jsongs)
+            .await
+            .with_context(|| "failed to write to file")?; */
             let mut no_video = vec![];
             let mut no_cover = vec![];
             let mut no_genre = vec![];
             for song in songs {
                 if song.cover.is_none() {
-                    let s = SmallSong{path: song.path.clone(), title: song.title.clone(),artist: song.artist.clone()};
+                    let s = SmallSong {
+                        path: song.path.clone(),
+                        title: song.title.clone(),
+                        artist: song.artist.clone(),
+                    };
                     no_cover.push(s)
                 }
                 if song.video.is_none() && song.bg.is_none() {
-                    let s = SmallSong{path: song.path.clone(), title: song.title.clone(),artist: song.artist.clone()};
+                    let s = SmallSong {
+                        path: song.path.clone(),
+                        title: song.title.clone(),
+                        artist: song.artist.clone(),
+                    };
                     no_video.push(s)
                 }
                 if song.genre.is_none() {
-                    let s = SmallSong{path: song.path.clone(), title: song.title.clone(),artist: song.artist.clone()};
+                    let s = SmallSong {
+                        path: song.path.clone(),
+                        title: song.title.clone(),
+                        artist: song.artist.clone(),
+                    };
                     no_genre.push(s)
                 }
             }
@@ -158,6 +199,23 @@ impl Song {
         0.0
     }
 }
+/*
+fn scrape(songs_dir) -> Songs {
+
+}
+
+fn scrape_and_save(songs_dir, output_file_path) {
+    let songs = scrape(songs_dir);
+
+    // do file stuff to write `songs` to output_file_path
+}
+
+
+fn scrape_and_post(songs_dir, output_file_path) {
+    let songs = scrape(songs_dir);
+
+    // post songs to server
+}*/
 
 fn explore_dir(path: PathBuf, tx: Arc<mpsc::Sender<Song>>) {
     async fn inner(path: PathBuf, tx: Arc<mpsc::Sender<Song>>) -> eyre::Result<()> {
@@ -216,7 +274,7 @@ async fn parse_file(path: PathBuf, tx: Arc<mpsc::Sender<Song>>) -> eyre::Result<
     let file_name = path.file_name().expect("file has a filename");
     //println!("hashing {file_name:?}");
     //println!("{:?}", file_name);
-    let song_hash = md5::compute(path.to_string_lossy().as_bytes());
+    let song_hash = md5::compute(file_name.to_string_lossy().as_bytes());
     let song_hash = format!("{song_hash:?}");
 
     let mut song = Song {
