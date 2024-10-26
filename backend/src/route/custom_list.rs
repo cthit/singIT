@@ -25,10 +25,13 @@ pub async fn list_all(pool: web::Data<DbPool>) -> Result<impl Responder> {
 /// Get a custom list
 #[get("/custom/list/{list}")]
 pub async fn get_list(pool: web::Data<DbPool>, path: web::Path<String>) -> Result<impl Responder> {
+    let list_name = path.into_inner();
+    get_list_inner(&pool, list_name).await
+}
+
+pub async fn get_list_inner(pool: &DbPool, list_name: String) -> Result<Json<Vec<String>>> {
     use schema::custom_list::dsl::*;
     use schema::custom_list_entry::dsl::*;
-
-    let list_name = path.into_inner();
 
     let mut db = pool.get().await?;
 
@@ -61,14 +64,23 @@ pub async fn insert_entry(
     pool: web::Data<DbPool>,
     path: web::Path<(String, String)>,
 ) -> Result<impl Responder> {
+    let (list_name, new_song_hash) = path.into_inner();
+    let cid = &user.info.cid;
+    insert_entry_inner(cid, &pool, list_name, new_song_hash).await
+}
+
+/// Insert a custom list entry
+pub async fn insert_entry_inner(
+    user_cid: &str,
+    pool: &DbPool,
+    list_name: String,
+    new_song_hash: String,
+) -> Result<Response<actix_web::body::BoxBody>> {
     use schema::custom_list::dsl::{custom_list, id, name};
     use schema::custom_list_entry::dsl::{custom_list_entry, list_id, song_hash};
 
-    let (list_name, new_song_hash) = path.into_inner();
-
-    let cid = &user.info.cid;
-    if cid != &list_name {
-        log::warn!("User {cid:?} tried to edit custom list {list_name:?}",);
+    if user_cid != &list_name {
+        log::warn!("User {user_cid:?} tried to edit custom list {list_name:?}",);
         return Ok(Response::new(StatusCode::UNAUTHORIZED));
     }
 
