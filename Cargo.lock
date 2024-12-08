@@ -942,7 +942,7 @@ dependencies = [
 [[package]]
 name = "gamma_rust_client"
 version = "0.1.0"
-source = "git+https://github.com/hulthe/Delta.git?rev=ce5b41aa248701a7fef8907acf736690928813ff#ce5b41aa248701a7fef8907acf736690928813ff"
+source = "git+https://github.com/cthit/Gamma.git?rev=86a735e2c7f56cb854fe60e3aff789243f0eb6c7#86a735e2c7f56cb854fe60e3aff789243f0eb6c7"
 dependencies = [
  "rand",
  "reqwest",
