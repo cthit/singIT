@@ -1,7 +1,12 @@
 use std::sync::Arc;
 
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::{cookie::Key, middleware::Logger, web, App, HttpServer};
+use actix_web::{
+    cookie::Key,
+    middleware::Logger,
+    web::{self, PayloadConfig},
+    App, HttpServer,
+};
 use clap::Parser;
 use dotenv::dotenv;
 use gamma_rust_client::config::GammaConfig;
@@ -39,6 +44,7 @@ async fn main() -> eyre::Result<()> {
                     CookieSessionStore::default(),
                     secret_key,
                 ))
+                .app_data(PayloadConfig::new(100_000_000)) // 100 MB
                 .app_data(web::Data::new(db_pool.clone()))
                 .app_data(web::Data::new(Arc::clone(&opt)))
                 .app_data(web::Data::new(Arc::clone(&gamma_config)))

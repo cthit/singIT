@@ -145,6 +145,8 @@ pub async fn put_songs(
                 }
 
                 let songs_added = new_songs.len() - songs_updated;
+
+                // FIXME: this won't work in any custom lists exist with these songs
                 let songs_deleted = diesel::delete(song.filter(song_hash.eq_any(to_delete)))
                     .execute(&mut db)
                     .await
