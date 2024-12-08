@@ -1,7 +1,7 @@
 use std::{fs::create_dir, path::PathBuf, sync::Arc, vec};
 
 use clap::{Parser, Subcommand};
-use eyre::{eyre, WrapErr};
+use eyre::{bail, eyre, WrapErr};
 use rust_fuzzy_search::fuzzy_compare;
 use serde::Serialize;
 use tokio::{
@@ -41,10 +41,14 @@ async fn main() -> eyre::Result<()> {
 
     explore_dir(opt.songs_dir, Arc::new(tx));
 
-    let mut songs = vec![];
+    let mut songs: Vec<Song> = vec![];
     while let Some(song) = rx.recv().await {
-        //let song = serde_json::to_string(&song).expect("song should always serialize");
-        // println!("title={:?}, hash={:?}", song.title.unwrap(), song.song_hash);
+        if songs.iter().any(|s| s.song_hash == song.song_hash) {
+            bail!(
+                "Duplicate song file! {} has the same name as another file. Remove or rename it.",
+                song.path.display()
+            );
+        }
         songs.push(song);
     }
     let jsongs =
