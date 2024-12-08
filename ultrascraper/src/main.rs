@@ -83,18 +83,6 @@ async fn main() -> eyre::Result<()> {
         Action::Post { server, token } => {
             let client = reqwest::Client::new();
 
-            println!("Uploading {} songs to {server}", songs.len());
-            let res = client
-                .put(format!("{server}/songs?token={token}"))
-                .json(&songs)
-                .send()
-                .await?;
-
-            if let Err(e) = res.error_for_status() {
-                println!("Error uploading song list, {e:?}");
-                return Ok(());
-            }
-
             println!("Deleting old song covers on {server}");
             let res = client
                 .delete(format!("{server}/images/songs?token={token}"))
@@ -106,7 +94,7 @@ async fn main() -> eyre::Result<()> {
                 return Ok(());
             }
 
-            for song in &songs {
+            for song in &mut songs {
                 if let Some(cover) = &song.cover {
                     let mut cover_from = song.path.clone();
                     cover_from.pop();
@@ -130,9 +118,22 @@ async fn main() -> eyre::Result<()> {
                             println!("Error sending image {cover_from:?}, {e:?}")
                         }
                     } else {
-                        println!("invalid cover {cover_from:?}, song: {:?}", song.title)
+                        println!("invalid cover {cover_from:?}, song: {:?}", song.title);
+                        song.cover = None;
                     }
                 }
+            }
+
+            println!("Uploading {} songs to {server}", songs.len());
+            let res = client
+                .put(format!("{server}/songs?token={token}"))
+                .json(&songs)
+                .send()
+                .await?;
+
+            if let Err(e) = res.error_for_status() {
+                println!("Error uploading song list, {e:?}");
+                return Ok(());
             }
         }
         Action::Admin {} => {
