@@ -1,7 +1,7 @@
 ##################
 ### BASE STAGE ###
 ##################
-FROM rust:1.80.1 as base
+FROM rust:1.83.0 as base
 
 # Install build dependencies
 RUN rustup target add wasm32-unknown-unknown
@@ -21,7 +21,14 @@ RUN mkdir frontend backend lib
 ###########################
 FROM base AS strip-version
 
-COPY Cargo.lock Cargo.toml ./
+# Generate workspace manifest without ultrascroper
+RUN tee Cargo.toml <<EOF
+[workspace]
+members = ["backend", "frontend", "lib"]
+resolver = "2"
+EOF
+
+COPY Cargo.lock ./
 COPY frontend/Cargo.toml ./frontend/
 COPY backend/Cargo.toml ./backend/
 COPY lib/Cargo.toml ./lib/
@@ -39,7 +46,7 @@ RUN cargo init --lib lib
 COPY --from=strip-version /app/frontend/Cargo.toml        /app/frontend/
 COPY --from=strip-version /app/backend/Cargo.toml         /app/backend/
 COPY --from=strip-version /app/lib/Cargo.toml             /app/lib/
-COPY --from=strip-version /app/Cargo.toml /app/Cargo.lock /app/
+COPY --from=strip-version /app/Cargo.lock /app/
 
 WORKDIR /app/backend
 RUN cargo build --release --target x86_64-unknown-linux-musl
