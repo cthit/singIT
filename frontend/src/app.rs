@@ -371,7 +371,7 @@ pub fn view_songs(model: &Model) -> Node<Msg> {
             img![
                 C![C.song_item_cover],
                 match song.cover {
-                    Some(_) => attrs! {At::Src => format!("/images/songs/{}.png", song.song_hash)},
+                    Some(_) => attrs! {At::Src => format!("/images/songs/{}", song.song_hash)},
                     None => {
                         // use a DefaultHasher to turn the song_hash string into a number we can
                         // use to give the song a psuedo-random default cover.

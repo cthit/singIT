@@ -1,3 +1,7 @@
 target
 dist
 .env
+*.json
+*.py
+*.txt
+covers
