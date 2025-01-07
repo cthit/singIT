@@ -2336,14 +2336,14 @@ dependencies = [
 
 [[package]]
 name = "singit_lib"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "singit_srv"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "actix-files",
  "actix-session",
@@ -2368,7 +2368,7 @@ dependencies = [
 
 [[package]]
 name = "singit_web"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "css_typegen",
  "csv",
