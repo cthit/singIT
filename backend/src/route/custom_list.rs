@@ -1,5 +1,5 @@
 use actix_web::web::Json;
-use actix_web::{delete, dev::Response, get, put, web, Responder, http::StatusCode};
+use actix_web::{delete, dev::Response, get, http::StatusCode, put, web, Responder};
 use diesel::ExpressionMethods;
 use diesel::{QueryDsl, SelectableHelper};
 use diesel_async::{AsyncConnection, RunQueryDsl};

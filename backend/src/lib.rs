@@ -252,6 +252,10 @@ pub struct Opt {
     #[clap(short, long, env = "DATABASE_URL")]
     pub database_url: String,
 
+    /// Whether to run database migrations on startup.
+    #[clap(short, long, env = "RUN_MIGRATIONS")]
+    pub run_migrations: bool,
+
     /// Directory where song covers are stored.
     #[clap(short, long, env = "COVERS_DIR")]
     pub covers_dir: PathBuf,
